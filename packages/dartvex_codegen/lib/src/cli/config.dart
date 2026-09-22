@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:path/path.dart' as path;
 
 /// Immutable configuration for the `dartvex_codegen generate` command.
@@ -9,6 +11,8 @@ class GenerateConfig {
     required this.dryRun,
     required this.verbose,
     required this.watch,
+    this.discriminator = 'kind',
+    this.schemaFile,
     this.projectDirectory,
     this.specFile,
   });
@@ -34,6 +38,12 @@ class GenerateConfig {
   /// Whether the generator should watch for source changes and rerun automatically.
   final bool watch;
 
+  /// Object-union field used to select generated sealed subclasses.
+  final String discriminator;
+
+  /// Optional local Convex schema entrypoint override.
+  final String? schemaFile;
+
   /// Returns a copy with filesystem paths normalized to absolute paths.
   GenerateConfig normalize() {
     return GenerateConfig(
@@ -48,6 +58,20 @@ class GenerateConfig {
       dryRun: dryRun,
       verbose: verbose,
       watch: watch,
+      discriminator: discriminator,
+      schemaFile:
+          schemaFile == null
+              ? null
+              : path.normalize(
+                path.isAbsolute(schemaFile!)
+                    ? schemaFile!
+                    : path.join(
+                      projectDirectory == null
+                          ? Directory.current.path
+                          : path.absolute(projectDirectory!),
+                      schemaFile!,
+                    ),
+              ),
     );
   }
 
@@ -60,6 +84,9 @@ class GenerateConfig {
     }
     if (outputDirectory.trim().isEmpty) {
       throw ArgumentError('--output is required.');
+    }
+    if (discriminator.trim().isEmpty) {
+      throw ArgumentError('--discriminator cannot be empty.');
     }
   }
 }

@@ -244,6 +244,38 @@ void main() {
         context.renderDefinitions(),
         contains('sealed class MessagePayload'),
       );
+      expect(context.renderDefinitions(), contains('final class Text'));
+      expect(context.renderDefinitions(), contains('required this.body'));
+      expect(context.renderDefinitions(), contains('final String body'));
+      expect(context.renderDefinitions(), isNot(contains('final String kind')));
+      expect(context.renderDefinitions(), contains("case 'text':"));
+      expect(context.renderDefinitions(), contains('return Text('));
+    });
+
+    test('uses the configured object union discriminator', () {
+      final context = TypeRenderContext(discriminator: 'type');
+      final mapped = TypeMapper().mapType(
+        const ConvexUnionType(<ConvexType>[
+          ConvexObjectType(<String, ConvexField>{
+            'type': ConvexField(
+              fieldType: ConvexLiteralType('success'),
+              optional: false,
+            ),
+          }),
+          ConvexObjectType(<String, ConvexField>{
+            'type': ConvexField(
+              fieldType: ConvexLiteralType('failure'),
+              optional: false,
+            ),
+          }),
+        ]),
+        suggestedName: 'Result',
+        context: context,
+      );
+
+      expect(mapped.annotation, 'Result');
+      expect(context.renderDefinitions(), contains('final class Success'));
+      expect(context.renderDefinitions(), contains("'type': 'success'"));
     });
 
     test('throws on object unions without a discriminator', () {
@@ -328,6 +360,47 @@ void main() {
         throwsA(
           isA<TypeMapperException>().having(
             (e) => e.message,
+            'message',
+            allOf(contains('foo_bar'), contains('foo-bar'), contains('fooBar')),
+          ),
+        ),
+      );
+    });
+
+    test('throws on field name collision in discriminated unions', () {
+      final context = TypeRenderContext();
+      final mapper = TypeMapper();
+
+      expect(
+        () => mapper.mapType(
+          const ConvexUnionType(<ConvexType>[
+            ConvexObjectType(<String, ConvexField>{
+              'kind': ConvexField(
+                fieldType: ConvexLiteralType('first'),
+                optional: false,
+              ),
+              'foo_bar': ConvexField(
+                fieldType: ConvexStringType(),
+                optional: false,
+              ),
+              'foo-bar': ConvexField(
+                fieldType: ConvexStringType(),
+                optional: false,
+              ),
+            }),
+            ConvexObjectType(<String, ConvexField>{
+              'kind': ConvexField(
+                fieldType: ConvexLiteralType('second'),
+                optional: false,
+              ),
+            }),
+          ]),
+          suggestedName: 'Collide',
+          context: context,
+        ),
+        throwsA(
+          isA<TypeMapperException>().having(
+            (error) => error.message,
             'message',
             allOf(contains('foo_bar'), contains('foo-bar'), contains('fooBar')),
           ),

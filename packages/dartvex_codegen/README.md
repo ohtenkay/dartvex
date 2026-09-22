@@ -65,6 +65,8 @@ dart run dartvex_codegen generate \
 Useful flags:
 
 - `--client-import package:dartvex/dartvex.dart`
+- `--discriminator kind`
+- `--schema-file /path/to/convex/schema.ts`
 - `--dry-run`
 - `--verbose`
 - `--watch`
@@ -88,7 +90,54 @@ The generator produces:
 - `api.dart` as the main entrypoint
 - `runtime.dart` with shared helper types like `Optional<T>`
 - `schema.dart` with typed table IDs
+- `types.dart` with shared schema-derived discriminated unions, when present
 - `modules/...` with typed wrappers around Convex queries, mutations, and actions
+
+### Schema-derived discriminated unions
+
+Project generation automatically loads `convex/schema.ts` (or `schema.js`) and
+discovers object unions whose members have a required string-literal `kind`
+field. The discriminator can be changed globally with `--discriminator`.
+
+```ts
+category: v.union(
+  v.object({ kind: v.literal("beer") }),
+  v.object({
+    kind: v.literal("cocktail"),
+    ingredients: v.array(v.string()),
+  }),
+)
+```
+
+The schema field name becomes the shared sealed base name. The discriminator
+values become unprefixed subclasses, and `kind` remains a wire-only field:
+
+```dart
+sealed class Category {
+  const Category();
+}
+
+final class Beer extends Category {
+  const Beer();
+}
+
+final class Cocktail extends Category {
+  const Cocktail({required this.ingredients});
+
+  final List<String> ingredients;
+}
+```
+
+Dartvex recursively discovers unions at any object or array nesting depth.
+Using the same field name in multiple schema locations reuses one Dart type
+when the union structures are identical. Different structures using the same
+field name fail generation. Subclass names are global within `types.dart`, so
+discriminator values that normalize to the same Dart name also fail clearly.
+
+Schema loading bundles and evaluates the local schema with the project's
+installed `esbuild`, then calls Convex's `SchemaDefinition.export()`. Generation
+from only `--spec-file` has no local schema and therefore retains endpoint-local
+types.
 
 Example:
 

@@ -3,7 +3,9 @@
 
 import '../runtime.dart';
 import '../schema.dart';
+
 import 'dart:typed_data';
+
 import 'package:dartvex/dartvex.dart';
 
 class MessagesApi {

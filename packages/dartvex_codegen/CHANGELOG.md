@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Project generation now loads the local Convex schema and emits reusable
+  schema-derived discriminated unions in `types.dart`. A union member's
+  required string-literal `kind` field selects an unprefixed Dart subclass;
+  other fields become constructor parameters and fields.
+- `--discriminator` changes the global object-union discriminator from its
+  default `kind`, and `--schema-file` overrides the default Convex schema path.
+
 ## [0.2.0] - 2026-06-12
 
 ### Added

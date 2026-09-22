@@ -7,6 +7,8 @@ import 'package:path/path.dart' as path;
 import '../generator/dart_generator.dart';
 import '../generator/file_emitter.dart';
 import '../spec/spec_parser.dart';
+import '../spec/schema_spec.dart';
+import '../spec/schema_spec_parser.dart';
 import 'config.dart';
 import 'process_runner.dart';
 import 'scrub_command.dart';
@@ -63,6 +65,8 @@ class GenerateCommand {
       ..addOption('spec-file')
       ..addOption('output')
       ..addOption('client-import', defaultsTo: 'package:dartvex/dartvex.dart')
+      ..addOption('schema-file')
+      ..addOption('discriminator', defaultsTo: 'kind')
       ..addFlag('watch', negatable: false)
       ..addFlag('dry-run', negatable: false)
       ..addFlag('verbose', negatable: false);
@@ -118,6 +122,8 @@ class GenerateCommand {
       dryRun: parsed['dry-run'] as bool,
       verbose: parsed['verbose'] as bool,
       watch: parsed['watch'] as bool,
+      schemaFile: parsed['schema-file'] as String?,
+      discriminator: parsed['discriminator'] as String,
     );
     config.validate();
     final normalizedConfig = config.normalize();
@@ -142,8 +148,11 @@ class GenerateCommand {
   Future<void> _generateOnce(GenerateConfig config) async {
     final specSource = await _loadSpecSource(config);
     final spec = const SpecParser().parseString(specSource);
+    final schema = await _loadSchema(config);
     final output = DartGenerator(
       clientImport: config.clientImport,
+      schema: schema,
+      discriminator: config.discriminator,
     ).generate(spec);
 
     if (config.dryRun) {
@@ -167,6 +176,21 @@ class GenerateCommand {
     for (final warning in output.warnings) {
       _log('Warning: $warning');
     }
+  }
+
+  Future<SchemaSpec?> _loadSchema(GenerateConfig config) async {
+    final projectDirectory = config.projectDirectory;
+    final processRunner = _processRunner;
+    if (projectDirectory == null || processRunner is! SchemaProcessRunner) {
+      return null;
+    }
+    final schemaRunner = processRunner as SchemaProcessRunner;
+    final source = await schemaRunner.runSchemaSpec(
+      projectDirectory: projectDirectory,
+      verbose: config.verbose,
+      schemaFile: config.schemaFile,
+    );
+    return source == null ? null : const SchemaSpecParser().parseString(source);
   }
 
   Future<String> _loadSpecSource(GenerateConfig config) async {
