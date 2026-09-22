@@ -39,7 +39,6 @@ abstract interface class SchemaProcessRunner {
   Future<String?> runSchemaSpec({
     required String projectDirectory,
     required bool verbose,
-    String? schemaFile,
   });
 }
 
@@ -117,9 +116,8 @@ class SystemProcessRunner implements ProcessRunner, SchemaProcessRunner {
   Future<String?> runSchemaSpec({
     required String projectDirectory,
     required bool verbose,
-    String? schemaFile,
   }) async {
-    final resolvedSchema = _resolveSchemaFile(projectDirectory, schemaFile);
+    final resolvedSchema = _resolveSchemaFile(projectDirectory);
     if (resolvedSchema == null) {
       return null;
     }
@@ -197,18 +195,7 @@ class SystemProcessRunner implements ProcessRunner, SchemaProcessRunner {
     }
   }
 
-  String? _resolveSchemaFile(String projectDirectory, String? configuredPath) {
-    if (configuredPath != null) {
-      final resolved =
-          path.isAbsolute(configuredPath)
-              ? configuredPath
-              : path.join(projectDirectory, configuredPath);
-      if (!File(resolved).existsSync()) {
-        throw ProcessRunnerException('Schema file does not exist: $resolved');
-      }
-      return path.normalize(path.absolute(resolved));
-    }
-
+  String? _resolveSchemaFile(String projectDirectory) {
     var functionsDirectory = 'convex';
     final convexConfig = File(path.join(projectDirectory, 'convex.json'));
     if (convexConfig.existsSync()) {

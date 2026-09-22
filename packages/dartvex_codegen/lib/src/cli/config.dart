@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:path/path.dart' as path;
 
 /// Immutable configuration for the `dartvex_codegen generate` command.
@@ -12,7 +10,6 @@ class GenerateConfig {
     required this.verbose,
     required this.watch,
     this.discriminator = 'kind',
-    this.schemaFile,
     this.projectDirectory,
     this.specFile,
   });
@@ -41,9 +38,6 @@ class GenerateConfig {
   /// Object-union field used to select generated sealed subclasses.
   final String discriminator;
 
-  /// Optional local Convex schema entrypoint override.
-  final String? schemaFile;
-
   /// Returns a copy with filesystem paths normalized to absolute paths.
   GenerateConfig normalize() {
     return GenerateConfig(
@@ -59,19 +53,6 @@ class GenerateConfig {
       verbose: verbose,
       watch: watch,
       discriminator: discriminator,
-      schemaFile:
-          schemaFile == null
-              ? null
-              : path.normalize(
-                path.isAbsolute(schemaFile!)
-                    ? schemaFile!
-                    : path.join(
-                      projectDirectory == null
-                          ? Directory.current.path
-                          : path.absolute(projectDirectory!),
-                      schemaFile!,
-                    ),
-              ),
     );
   }
 

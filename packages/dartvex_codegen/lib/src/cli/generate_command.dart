@@ -65,7 +65,6 @@ class GenerateCommand {
       ..addOption('spec-file')
       ..addOption('output')
       ..addOption('client-import', defaultsTo: 'package:dartvex/dartvex.dart')
-      ..addOption('schema-file')
       ..addOption('discriminator', defaultsTo: 'kind')
       ..addFlag('watch', negatable: false)
       ..addFlag('dry-run', negatable: false)
@@ -122,7 +121,6 @@ class GenerateCommand {
       dryRun: parsed['dry-run'] as bool,
       verbose: parsed['verbose'] as bool,
       watch: parsed['watch'] as bool,
-      schemaFile: parsed['schema-file'] as String?,
       discriminator: parsed['discriminator'] as String,
     );
     config.validate();
@@ -188,7 +186,6 @@ class GenerateCommand {
     final source = await schemaRunner.runSchemaSpec(
       projectDirectory: projectDirectory,
       verbose: config.verbose,
-      schemaFile: config.schemaFile,
     );
     return source == null ? null : const SchemaSpecParser().parseString(source);
   }

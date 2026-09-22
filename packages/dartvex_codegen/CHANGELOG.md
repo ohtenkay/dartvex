@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   required string-literal `kind` field selects an unprefixed Dart subclass;
   other fields become constructor parameters and fields.
 - `--discriminator` changes the global object-union discriminator from its
-  default `kind`, and `--schema-file` overrides the default Convex schema path.
+  default `kind`.
 
 ## [0.2.0] - 2026-06-12
 

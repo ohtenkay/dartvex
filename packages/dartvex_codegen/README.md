@@ -66,7 +66,6 @@ Useful flags:
 
 - `--client-import package:dartvex/dartvex.dart`
 - `--discriminator kind`
-- `--schema-file /path/to/convex/schema.ts`
 - `--dry-run`
 - `--verbose`
 - `--watch`
