@@ -124,11 +124,43 @@ class SendMessageHandler extends LocalMutationHandler {
 }
 ```
 
+Handlers run for both connected direct sends and queued/offline mutations. A
+handled direct mutation is persisted and patched before the remote call, so
+incoming server snapshots can be rebased while it is pending. Handlers may also
+provide the value returned while queued, such as a local ID for a create:
+
+```dart
+@override
+dynamic optimisticValue(
+  Map<String, dynamic> args,
+  LocalMutationContext context,
+) => context.operationId;
+```
+
+Generated APIs accept `ConvexFunctionCaller`. Wrap the local client and supply
+the remote caller used for paginated queries:
+
+```dart
+final caller = ConvexLocalFunctionCaller(
+  localClient: localClient,
+  remoteCaller: remoteConvexClient,
+  nullableQueuedMutations: {'messages:markRead'},
+);
+final api = Api(caller);
+```
+
+When a mutation is queued, the adapter requires a non-null handler-provided
+`optimisticValue`. List mutations whose generated return type accepts `null` in
+`nullableQueuedMutations`; they continue to return `null` while queued. This
+turns a missing optimistic value for a non-null generated return type into an
+immediate, descriptive `StateError` instead of a later cast failure.
+
 ## API Overview
 
 | Class | Description |
 |-------|-------------|
 | `ConvexLocalClient` | Offline-aware client with cache and queue |
+| `ConvexLocalFunctionCaller` | Generated API adapter for the local client |
 | `QueryCache` | Persistent query cache with expiry/pruning policy |
 | `MutationQueue` | Pending mutation queue with retry |
 | `SqliteLocalStore` | SQLite-backed local storage |
@@ -141,6 +173,7 @@ class SendMessageHandler extends LocalMutationHandler {
 | Remote query fails (retryable) | Falls back to cache if available |
 | Query while offline, no cache | Throws `StateError` |
 | Mutation while offline | Queued as `LocalMutationQueued` |
+| Handled mutation queued | Adapter returns the handler's optimistic value |
 | Mutation replay fails (non-retryable) | Dropped, `onConflict` called |
 | Action while offline | Throws `ConvexException` |
 

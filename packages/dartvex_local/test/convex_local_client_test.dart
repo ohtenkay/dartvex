@@ -50,6 +50,7 @@ void main() {
           queueStorage: store,
           mutationHandlers: const <LocalMutationHandler>[
             PublicMessageMutationHandler(),
+            CreateTaskHandler(),
           ],
         ),
       );
@@ -597,6 +598,421 @@ void main() {
         final cached = await localClient.query('messages:listPublic');
         expect((cached as List<dynamic>).last['text'], 'Queued');
         expect(localClient.currentPendingMutations, hasLength(1));
+      },
+    );
+
+    test(
+      'handled connected mutation persists and patches before completion',
+      () async {
+        remoteClient.queryResults['messages:listPublic'] = <dynamic>[];
+        await localClient.query('messages:listPublic');
+        final remoteResult = Completer<Object?>();
+        remoteClient.mutationResults['messages:sendPublic'] = <Object?>[
+          remoteResult.future,
+        ];
+
+        final result = localClient.mutate(
+          'messages:sendPublic',
+          <String, dynamic>{'author': 'Local', 'text': 'Optimistic'},
+        );
+        await pumpEventQueue();
+
+        expect(remoteClient.mutationCalls, hasLength(1));
+        expect(localClient.currentPendingMutations, hasLength(1));
+        final cache = QueryCache(storage: store, codec: const JsonValueCodec());
+        final optimistic = await cache.read(
+          'messages:listPublic',
+          const <String, dynamic>{},
+        );
+        expect(
+          (optimistic!.value as List<dynamic>).single['text'],
+          'Optimistic',
+        );
+
+        remoteClient.queryResults['messages:listPublic'] = <dynamic>[
+          <String, dynamic>{'text': 'Confirmed'},
+        ];
+        remoteResult.complete('server-id');
+        final completed = await result;
+
+        expect(completed, isA<LocalMutationSuccess>());
+        expect((completed as LocalMutationSuccess).value, 'server-id');
+        expect(localClient.currentPendingMutations, isEmpty);
+        final refreshed = await cache.read(
+          'messages:listPublic',
+          const <String, dynamic>{},
+        );
+        expect((refreshed!.value as List<dynamic>).single['text'], 'Confirmed');
+      },
+    );
+
+    test(
+      'remote snapshots rebase a handled connected patch while pending',
+      () async {
+        remoteClient.queryResults['messages:listPublic'] = <dynamic>[];
+        await localClient.query('messages:listPublic');
+        final feed = StreamController<LocalRemoteQueryEvent>.broadcast();
+        addTearDown(feed.close);
+        remoteClient.subscriptionStreams['messages:listPublic'] = feed.stream;
+        final events = <LocalQueryEvent>[];
+        final subscription = localClient.subscribe('messages:listPublic');
+        addTearDown(subscription.cancel);
+        subscription.stream.listen(events.add);
+        await pumpEventQueue();
+
+        final remoteResult = Completer<Object?>();
+        remoteClient.mutationResults['messages:sendPublic'] = <Object?>[
+          remoteResult.future,
+        ];
+        final result = localClient.mutate(
+          'messages:sendPublic',
+          <String, dynamic>{'author': 'Local', 'text': 'Pending'},
+        );
+        await pumpEventQueue();
+        feed.add(
+          const LocalRemoteQuerySuccess(<dynamic>[
+            <String, dynamic>{'text': 'Remote'},
+          ]),
+        );
+        await pumpEventQueue();
+
+        final rebased = events.whereType<LocalQuerySuccess>().last;
+        expect(rebased.hasPendingWrites, isTrue);
+        expect(
+          (rebased.value as List<dynamic>).map(
+            (item) => (item as Map<String, dynamic>)['text'],
+          ),
+          <String?>['Remote', 'Pending'],
+        );
+
+        remoteClient.subscriptionStreams['messages:listPublic'] =
+            Stream<LocalRemoteQueryEvent>.value(
+              const LocalRemoteQuerySuccess(<dynamic>[
+                <String, dynamic>{'text': 'Confirmed'},
+              ]),
+            );
+        remoteResult.complete('server-id');
+        expect(await result, isA<LocalMutationSuccess>());
+      },
+    );
+
+    test('retryable handled direct failure retains one queued patch', () async {
+      remoteClient.queryResults['messages:listPublic'] = <dynamic>[];
+      await localClient.query('messages:listPublic');
+      remoteClient.mutationResults['messages:sendPublic'] = <Object?>[
+        const ConvexException('retry', retryable: true),
+      ];
+
+      final result = await localClient.mutate(
+        'messages:sendPublic',
+        <String, dynamic>{'author': 'Local', 'text': 'Once'},
+      );
+
+      expect(result, isA<LocalMutationQueued>());
+      expect(localClient.currentPendingMutations, hasLength(1));
+      final cached = await QueryCache(
+        storage: store,
+        codec: const JsonValueCodec(),
+      ).read('messages:listPublic', const <String, dynamic>{});
+      expect(cached!.value, hasLength(1));
+      expect(remoteClient.mutationCalls, hasLength(1));
+    });
+
+    test(
+      'permanent handled direct failure rolls back and returns failed',
+      () async {
+        remoteClient.queryResults['messages:listPublic'] = <dynamic>[];
+        await localClient.query('messages:listPublic');
+        remoteClient.mutationResults['messages:sendPublic'] = <Object?>[
+          const ConvexException('invalid', retryable: false),
+        ];
+
+        final result = await localClient.mutate(
+          'messages:sendPublic',
+          <String, dynamic>{'author': 'Local', 'text': 'Rollback'},
+        );
+
+        expect(result, isA<LocalMutationFailed>());
+        expect(localClient.currentPendingMutations, isEmpty);
+        final cached = await QueryCache(
+          storage: store,
+          codec: const JsonValueCodec(),
+        ).read('messages:listPublic', const <String, dynamic>{});
+        expect(cached!.value, isEmpty);
+      },
+    );
+
+    test(
+      'permanent handled direct failure uses rebased rollback metadata',
+      () async {
+        remoteClient.queryResults['messages:listPublic'] = <dynamic>[];
+        await localClient.query('messages:listPublic');
+        final feed = StreamController<LocalRemoteQueryEvent>.broadcast();
+        addTearDown(feed.close);
+        remoteClient.subscriptionStreams['messages:listPublic'] = feed.stream;
+        final subscription = localClient.subscribe('messages:listPublic');
+        addTearDown(subscription.cancel);
+        subscription.stream.listen((_) {});
+        await pumpEventQueue();
+
+        final remoteResult = Completer<Object?>();
+        remoteClient.mutationResults['messages:sendPublic'] = <Object?>[
+          remoteResult.future,
+        ];
+        final result = localClient.mutate(
+          'messages:sendPublic',
+          <String, dynamic>{'author': 'Local', 'text': 'Rollback'},
+        );
+        await pumpEventQueue();
+
+        feed.add(
+          const LocalRemoteQuerySuccess(<dynamic>[
+            <String, dynamic>{'text': 'Latest remote'},
+          ]),
+        );
+        await pumpEventQueue();
+        remoteClient.subscriptionStreams['messages:listPublic'] =
+            Stream<LocalRemoteQueryEvent>.value(
+              const LocalRemoteQueryError(
+                ConvexException('Refresh failed', retryable: false),
+              ),
+            );
+        remoteResult.completeError(
+          const ConvexException('invalid', retryable: false),
+        );
+
+        expect(await result, isA<LocalMutationFailed>());
+        final cached = await QueryCache(
+          storage: store,
+          codec: const JsonValueCodec(),
+        ).read('messages:listPublic', const <String, dynamic>{});
+        expect(
+          (cached!.value as List<dynamic>).single,
+          containsPair('text', 'Latest remote'),
+        );
+      },
+    );
+
+    test(
+      'connected create remaps dependent args captured while it is in flight',
+      () async {
+        remoteClient.queryResults['tasks:list'] = <dynamic>[];
+        await localClient.query('tasks:list');
+        final createResult = Completer<Object?>();
+        remoteClient.mutationResults['tasks:create'] = <Object?>[
+          createResult.future,
+        ];
+        remoteClient.mutationResults['tasks:advance'] = <Object?>['advanced'];
+
+        final create = localClient.mutate('tasks:create', <String, dynamic>{
+          'title': 'Connected',
+        });
+        await pumpEventQueue();
+        final localId =
+            localClient
+                    .currentPendingMutations
+                    .single
+                    .optimisticData!['operationId']
+                as String;
+        final dependentArgs = <String, dynamic>{'taskId': localId};
+        final dependent = localClient.mutate('tasks:advance', dependentArgs);
+        dependentArgs['taskId'] = 'caller-mutated';
+
+        createResult.complete('server-task-connected');
+
+        expect(await create, isA<LocalMutationSuccess>());
+        expect(await dependent, isA<LocalMutationSuccess>());
+        expect(remoteClient.mutationCalls, hasLength(2));
+        expect(
+          remoteClient.mutationCalls.last.args['taskId'],
+          'server-task-connected',
+        );
+        expect(
+          await store.loadIdRemaps(),
+          containsPair(localId, 'server-task-connected'),
+        );
+      },
+    );
+
+    test(
+      'connected create without a server ID does not send its dependent',
+      () async {
+        remoteClient.queryResults['tasks:list'] = <dynamic>[];
+        await localClient.query('tasks:list');
+        final createResult = Completer<Object?>();
+        remoteClient.mutationResults['tasks:create'] = <Object?>[
+          createResult.future,
+        ];
+        remoteClient.mutationResults['tasks:advance'] = <Object?>['advanced'];
+
+        final create = localClient.mutate('tasks:create', <String, dynamic>{
+          'title': 'No server ID',
+        });
+        await pumpEventQueue();
+        final localId =
+            localClient
+                    .currentPendingMutations
+                    .single
+                    .optimisticData!['operationId']
+                as String;
+        final dependent = localClient.mutate('tasks:advance', <String, dynamic>{
+          'taskId': localId,
+        });
+
+        createResult.complete();
+
+        expect(await create, isA<LocalMutationSuccess>());
+        final dependentResult = await dependent;
+        expect(dependentResult, isA<LocalMutationFailed>());
+        expect(
+          (dependentResult as LocalMutationFailed).error.toString(),
+          contains('unresolved local ID'),
+        );
+        expect(remoteClient.mutationCalls.map((call) => call.name), <String>[
+          'tasks:create',
+        ]);
+      },
+    );
+
+    test(
+      'function caller returns queued optimistic value and delegates pages',
+      () async {
+        await localClient.setNetworkMode(LocalNetworkMode.offline);
+        final remoteCaller = FakeFunctionCaller();
+        final caller = ConvexLocalFunctionCaller(
+          localClient: localClient,
+          remoteCaller: remoteCaller,
+        );
+
+        final localId = await caller.mutate('tasks:create', <String, dynamic>{
+          'title': 'Offline',
+        });
+        expect(localId, startsWith('local-'));
+        expect(
+          localClient
+              .currentPendingMutations
+              .single
+              .optimisticData!['operationId'],
+          localId,
+        );
+        expect(
+          () => caller.paginatedQuery(
+            'tasks:paginated',
+            const <String, dynamic>{'status': 'open'},
+            pageSize: 7,
+          ),
+          throwsStateError,
+        );
+        expect(remoteCaller.paginatedName, 'tasks:paginated');
+        expect(remoteCaller.paginatedPageSize, 7);
+      },
+    );
+
+    test(
+      'function caller rejects missing queued values unless declared nullable',
+      () async {
+        await localClient.setNetworkMode(LocalNetworkMode.offline);
+        final strictCaller = ConvexLocalFunctionCaller(
+          localClient: localClient,
+          remoteCaller: FakeFunctionCaller(),
+        );
+
+        await expectLater(
+          strictCaller.mutate('tasks:noOptimisticValue'),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              contains('without an optimistic return value'),
+            ),
+          ),
+        );
+
+        final nullableCaller = ConvexLocalFunctionCaller(
+          localClient: localClient,
+          remoteCaller: FakeFunctionCaller(),
+          nullableQueuedMutations: const <String>{'tasks:markDone'},
+        );
+        expect(await nullableCaller.mutate('tasks:markDone'), isNull);
+      },
+    );
+
+    test(
+      'function caller unwraps success, throws failure, and routes actions',
+      () async {
+        remoteClient.queryResults['messages:listPublic'] = <dynamic>[];
+        await localClient.query('messages:listPublic');
+        final caller = ConvexLocalFunctionCaller(
+          localClient: localClient,
+          remoteCaller: FakeFunctionCaller(),
+        );
+        remoteClient.mutationResults['messages:sendPublic'] = <Object?>[
+          'server-id',
+          const ConvexException('invalid', retryable: false),
+        ];
+
+        expect(
+          await caller.mutate('messages:sendPublic', <String, dynamic>{
+            'author': 'A',
+            'text': 'Success',
+          }),
+          'server-id',
+        );
+        await expectLater(
+          caller.mutate('messages:sendPublic', <String, dynamic>{
+            'author': 'A',
+            'text': 'Failure',
+          }),
+          throwsA(
+            isA<ConvexException>().having(
+              (error) => error.message,
+              'message',
+              'invalid',
+            ),
+          ),
+        );
+
+        expect(await caller.action('messages:preview'), 'action-ok');
+        expect(remoteClient.actionCalls.single.name, 'messages:preview');
+      },
+    );
+
+    test(
+      'function caller maps local subscription success and errors',
+      () async {
+        final feed = StreamController<LocalRemoteQueryEvent>.broadcast();
+        addTearDown(feed.close);
+        remoteClient.subscriptionStreams['messages:listPublic'] = feed.stream;
+        final caller = ConvexLocalFunctionCaller(
+          localClient: localClient,
+          remoteCaller: FakeFunctionCaller(),
+        );
+        final subscription = caller.subscribe('messages:listPublic');
+        addTearDown(subscription.cancel);
+        final events = <QueryResult>[];
+        subscription.stream.listen(events.add);
+        await pumpEventQueue();
+
+        feed
+          ..add(const LocalRemoteQuerySuccess(<dynamic>['remote']))
+          ..add(
+            const LocalRemoteQueryError(
+              ConvexException(
+                'query failed',
+                data: <String, dynamic>{'code': 'bad'},
+                logLines: <String>['log'],
+              ),
+            ),
+          );
+        await pumpEventQueue();
+
+        final success = events.whereType<QuerySuccess>().single;
+        expect(success.value, <dynamic>['remote']);
+        expect(success.hasPendingWrites, isFalse);
+        final error = events.whereType<QueryError>().single;
+        expect(error.message, 'query failed');
+        expect(error.data, <String, dynamic>{'code': 'bad'});
+        expect(error.logLines, <String>['log']);
       },
     );
 
@@ -3031,6 +3447,12 @@ class CreateTaskHandler extends LocalMutationHandler {
   String get mutationName => 'tasks:create';
 
   @override
+  dynamic optimisticValue(
+    Map<String, dynamic> args,
+    LocalMutationContext context,
+  ) => context.operationId;
+
+  @override
   List<LocalMutationPatch> buildPatches(
     Map<String, dynamic> args,
     LocalMutationContext context,
@@ -3051,6 +3473,25 @@ class CreateTaskHandler extends LocalMutationHandler {
       ),
     ];
   }
+}
+
+class FakeFunctionCaller implements ConvexFunctionCaller {
+  String? paginatedName;
+  int? paginatedPageSize;
+
+  @override
+  ConvexPaginatedQuery paginatedQuery(
+    String name,
+    Map<String, dynamic> args, {
+    int pageSize = 20,
+  }) {
+    paginatedName = name;
+    paginatedPageSize = pageSize;
+    throw StateError('delegated');
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class AdvanceTaskHandler extends LocalMutationHandler {

@@ -79,9 +79,10 @@ sealed class TypedQueryResult<T> {
 }
 
 class TypedQuerySuccess<T> extends TypedQueryResult<T> {
-  const TypedQuerySuccess(this.value);
+  const TypedQuerySuccess(this.value, {this.hasPendingWrites = false});
 
   final T value;
+  final bool hasPendingWrites;
 }
 
 class TypedQueryLoading<T> extends TypedQueryResult<T> {

@@ -38,6 +38,17 @@ class MutationQueue {
     return stored.map(_toPendingMutation).toList(growable: false);
   }
 
+  /// Loads the pending mutation identified by [id], if it still exists.
+  Future<PendingMutation?> loadById(int id) async {
+    final mutations = await loadAll();
+    for (final mutation in mutations) {
+      if (mutation.id == id) {
+        return mutation;
+      }
+    }
+    return null;
+  }
+
   /// Updates the replay [status] of the mutation identified by [id].
   Future<void> markStatus(
     int id,

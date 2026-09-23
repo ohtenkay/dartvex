@@ -237,6 +237,7 @@ class LocalMutationQueued extends LocalMutationResult {
   const LocalMutationQueued({
     required this.queuePosition,
     required this.pendingMutation,
+    this.optimisticValue,
   });
 
   /// The 1-based position of the queued mutation.
@@ -244,6 +245,12 @@ class LocalMutationQueued extends LocalMutationResult {
 
   /// The queued mutation metadata.
   final PendingMutation pendingMutation;
+
+  /// Handler-provided value returned before the server confirms the mutation.
+  ///
+  /// Create handlers commonly return [LocalMutationContext.operationId], while
+  /// mutations with a `null` return type can keep the default `null` value.
+  final dynamic optimisticValue;
 }
 
 /// Mutation result produced when the mutation fails and cannot be queued.
@@ -417,6 +424,15 @@ abstract class LocalMutationHandler {
     Map<String, dynamic> args,
     LocalMutationContext context,
   );
+
+  /// Builds the value returned when this mutation remains queued.
+  ///
+  /// The default is `null`. Create handlers can return
+  /// [LocalMutationContext.operationId] to provide a stable local ID.
+  dynamic optimisticValue(
+    Map<String, dynamic> args,
+    LocalMutationContext context,
+  ) => null;
 }
 
 /// Configuration for constructing a [ConvexLocalClient].
@@ -569,6 +585,7 @@ class ConvexLocalClient {
   LocalRemoteConnectionState _lastRemoteConnectionState;
   List<PendingMutation> _pendingMutations = const <PendingMutation>[];
   bool _isSyncing = false;
+  bool _isSendingHandledMutation = false;
   bool _disposed = false;
   Timer? _replayRetryTimer;
   int _replayRetryCount = 0;
@@ -658,7 +675,7 @@ class ConvexLocalClient {
 
     try {
       final value = await _remoteClient.query(descriptor.name, descriptor.args);
-      return _writeRemoteSnapshotAndRebasePending(descriptor, value);
+      return await _writeRemoteSnapshotAndRebasePending(descriptor, value);
     } on ConvexException catch (error) {
       if (!error.retryable) {
         rethrow;
@@ -744,6 +761,36 @@ class ConvexLocalClient {
     Map<String, dynamic> normalizedArgs,
   ) async {
     _assertNotDisposed();
+    final idRemaps = await _mutationQueue.loadIdRemaps();
+    final failedLocalIds = await _mutationQueue.loadFailedLocalIds();
+    late final Map<String, dynamic> args;
+    try {
+      args = _remapIds(normalizedArgs, idRemaps) as Map<String, dynamic>;
+    } on _LocalIdRemapCollision catch (error) {
+      return LocalMutationFailed(error);
+    }
+    final unresolvedLocalIds = _unresolvedLocalIds(
+      args,
+      idRemaps,
+      failedLocalIds,
+    );
+    if (unresolvedLocalIds.isNotEmpty) {
+      return LocalMutationFailed(
+        StateError(
+          'Cannot send $name with unresolved local ID(s): '
+          '${unresolvedLocalIds.join(', ')}',
+        ),
+      );
+    }
+    final handler = _mutationHandlersByName[name];
+    if (handler != null &&
+        _networkMode == LocalNetworkMode.auto &&
+        _lastRemoteConnectionState == LocalRemoteConnectionState.connected &&
+        _pendingMutations.isEmpty &&
+        !_isSyncing &&
+        _replayRetryTimer == null) {
+      return _mutateHandledDirect(name, args, handler);
+    }
     if (_networkMode == LocalNetworkMode.auto &&
         _lastRemoteConnectionState == LocalRemoteConnectionState.connected &&
         _pendingMutations.isEmpty &&
@@ -751,7 +798,7 @@ class ConvexLocalClient {
         _replayRetryTimer == null) {
       _log('mutate', '$name — mode=auto, trying remote first');
       try {
-        final value = await _remoteClient.mutate(name, normalizedArgs);
+        final value = await _remoteClient.mutate(name, args);
         _log('mutate', '$name — remote succeeded');
         return LocalMutationSuccess(value);
       } on ConvexException catch (error) {
@@ -784,16 +831,107 @@ class ConvexLocalClient {
     }
 
     _log('mutate', '$name — queueing (mode=$_networkMode)');
+    final queued = await _enqueueMutation(name, args);
+
+    _log(
+      'mutate',
+      '$name — queued as id=${queued.pendingMutation.id} '
+          '(total pending=${_pendingMutations.length})',
+    );
+    return LocalMutationQueued(
+      queuePosition: _pendingMutations.length,
+      pendingMutation: queued.pendingMutation,
+      optimisticValue: queued.optimisticValue,
+    );
+  }
+
+  Future<LocalMutationResult> _mutateHandledDirect(
+    String name,
+    Map<String, dynamic> args,
+    LocalMutationHandler handler,
+  ) async {
+    _isSendingHandledMutation = true;
+    try {
+      final queued = await _enqueueMutation(name, args, handler: handler);
+      final mutation = queued.pendingMutation;
+      try {
+        final value = await _remoteClient.mutate(name, args);
+        final operationId = _generatedOperationId(mutation);
+        if (operationId != null) {
+          final serverId = _extractServerId(value);
+          if (serverId == null) {
+            await _mutationQueue.saveFailedLocalId(operationId);
+          } else {
+            await _mutationQueue.saveIdRemap(operationId, serverId);
+          }
+        }
+        await _mutationQueue.remove(mutation.id);
+        _pendingMutations = await _mutationQueue.loadAll();
+        _rebuildPendingWriteCounts();
+        _pendingMutationsController.add(currentPendingMutations);
+        await _refreshTargetsFromMutation(mutation);
+        _replayRetryCount = 0;
+        return LocalMutationSuccess(value);
+      } on ConvexException catch (error) {
+        if (!error.retryable) {
+          await _dropFailedMutation(mutation, error, reportConflict: false);
+          return LocalMutationFailed(error);
+        }
+        return await _retainDirectMutation(queued, error.message);
+      } catch (error) {
+        if (!_shouldQueueRemoteFailure(error)) {
+          await _dropFailedMutation(mutation, error, reportConflict: false);
+          return LocalMutationFailed(error);
+        }
+        return await _retainDirectMutation(queued, error.toString());
+      }
+    } finally {
+      _isSendingHandledMutation = false;
+      _updateConnectionState();
+    }
+  }
+
+  Future<LocalMutationQueued> _retainDirectMutation(
+    _QueuedMutation queued,
+    String errorMessage,
+  ) async {
+    await _mutationQueue.markStatus(
+      queued.pendingMutation.id,
+      PendingMutationStatus.pending,
+      errorMessage: errorMessage,
+    );
+    _pendingMutations = await _mutationQueue.loadAll();
+    _pendingMutationsController.add(currentPendingMutations);
+    _scheduleReplayRetry();
+    final pendingMutation = _pendingMutations.firstWhere(
+      (mutation) => mutation.id == queued.pendingMutation.id,
+    );
+    return LocalMutationQueued(
+      queuePosition: _pendingMutations.indexOf(pendingMutation) + 1,
+      pendingMutation: pendingMutation,
+      optimisticValue: queued.optimisticValue,
+    );
+  }
+
+  Future<_QueuedMutation> _enqueueMutation(
+    String name,
+    Map<String, dynamic> args, {
+    LocalMutationHandler? handler,
+  }) async {
     final context = LocalMutationContext(
       operationId: _nextOperationId(),
       queuedAt: DateTime.now().toUtc(),
     );
-    final patches = _buildPatches(name, normalizedArgs, context);
+    final effectiveHandler = handler ?? _mutationHandlersByName[name];
+    final patches =
+        effectiveHandler?.buildPatches(args, context) ??
+        const <LocalMutationPatch>[];
+    final optimisticValue = effectiveHandler?.optimisticValue(args, context);
     final snapshots = await _snapshotOptimisticPatchTargets(patches);
     final optimisticData = _optimisticMetadata(context, patches, snapshots);
     final pendingMutation = await _mutationQueue.enqueue(
       mutationName: name,
-      args: normalizedArgs,
+      args: args,
       optimisticData: optimisticData,
       createdAt: context.queuedAt,
     );
@@ -809,15 +947,9 @@ class ConvexLocalClient {
     _pendingMutationsController.add(currentPendingMutations);
     _emitPendingWriteUpdatesForTargets(patches);
     _updateConnectionState();
-
-    _log(
-      'mutate',
-      '$name — queued as id=${pendingMutation.id} '
-          '(total pending=${_pendingMutations.length})',
-    );
-    return LocalMutationQueued(
-      queuePosition: _pendingMutations.length,
+    return _QueuedMutation(
       pendingMutation: pendingMutation,
+      optimisticValue: optimisticValue,
     );
   }
 
@@ -1174,6 +1306,7 @@ class ConvexLocalClient {
     if (_disposed ||
         _networkMode == LocalNetworkMode.offline ||
         _isSyncing ||
+        _isSendingHandledMutation ||
         _lastRemoteConnectionState != LocalRemoteConnectionState.connected ||
         _pendingMutations.isEmpty) {
       _log(
@@ -1392,30 +1525,38 @@ class ConvexLocalClient {
 
   Future<String?> _dropFailedMutation(
     PendingMutation mutation,
-    Object error,
-  ) async {
-    final failedLocalId = _generatedOperationId(mutation);
+    Object error, {
+    bool reportConflict = true,
+  }) async {
+    // A remote snapshot can rebase this row's rollback metadata while the
+    // direct remote call is in flight. Always roll back from the latest
+    // persisted representation rather than the enqueue-time object.
+    final currentMutation =
+        await _mutationQueue.loadById(mutation.id) ?? mutation;
+    final failedLocalId = _generatedOperationId(currentMutation);
     if (failedLocalId != null) {
       await _mutationQueue.saveFailedLocalId(failedLocalId);
     }
-    await _mutationQueue.remove(mutation.id);
+    await _mutationQueue.remove(currentMutation.id);
     _pendingMutations = await _mutationQueue.loadAll();
     _rebuildPendingWriteCounts();
-    await _restoreMutationRollback(mutation);
+    await _restoreMutationRollback(currentMutation);
     _pendingMutationsController.add(currentPendingMutations);
-    try {
-      onConflict?.call(
-        LocalMutationConflict(
-          mutationName: mutation.mutationName,
-          args: mutation.args,
-          error: error,
-          queuedAt: mutation.createdAt,
-        ),
-      );
-    } catch (callbackError, stackTrace) {
-      _log('replay:on-conflict-error', '$callbackError\n$stackTrace');
+    if (reportConflict) {
+      try {
+        onConflict?.call(
+          LocalMutationConflict(
+            mutationName: currentMutation.mutationName,
+            args: currentMutation.args,
+            error: error,
+            queuedAt: currentMutation.createdAt,
+          ),
+        );
+      } catch (callbackError, stackTrace) {
+        _log('replay:on-conflict-error', '$callbackError\n$stackTrace');
+      }
     }
-    await _refreshTargetsFromMutation(mutation);
+    await _refreshTargetsFromMutation(currentMutation);
     return failedLocalId;
   }
 
@@ -2283,6 +2424,16 @@ class _LocalIdRemapCollision implements Exception {
 
   @override
   String toString() => message;
+}
+
+class _QueuedMutation {
+  const _QueuedMutation({
+    required this.pendingMutation,
+    required this.optimisticValue,
+  });
+
+  final PendingMutation pendingMutation;
+  final dynamic optimisticValue;
 }
 
 class _LocalQueryState {

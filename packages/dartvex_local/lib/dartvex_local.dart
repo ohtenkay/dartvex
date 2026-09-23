@@ -37,6 +37,7 @@ export 'src/client.dart'
         LocalSubscription,
         PendingMutation,
         PendingMutationStatus;
+export 'src/function_caller.dart' show ConvexLocalFunctionCaller;
 export 'src/offline/mutation_queue.dart' show MutationQueue;
 export 'src/offline/queue_storage.dart'
     show QueueStorage, StoredPendingMutation;

@@ -514,9 +514,12 @@ class DartGenerator {
         )
         ..writeln('  final typedStream\$ = subscription\$.stream.map((event) {')
         ..writeln('    switch (event) {')
-        ..writeln('      case QuerySuccess(:final value):')
         ..writeln(
-          '        return TypedQuerySuccess<${resultType.annotation}>(${resultType.decode('value')});',
+          '      case QuerySuccess(:final value, :final hasPendingWrites):',
+        )
+        ..writeln(
+          '        return TypedQuerySuccess<${resultType.annotation}>('
+          "${resultType.decode('value')}, hasPendingWrites: hasPendingWrites);",
         )
         ..writeln('      case QueryLoading(:final hasPendingWrites):')
         ..writeln(
@@ -824,9 +827,10 @@ sealed class TypedQueryResult<T> {
 }
 
 class TypedQuerySuccess<T> extends TypedQueryResult<T> {
-  const TypedQuerySuccess(this.value);
+  const TypedQuerySuccess(this.value, {this.hasPendingWrites = false});
 
   final T value;
+  final bool hasPendingWrites;
 }
 
 class TypedQueryLoading<T> extends TypedQueryResult<T> {

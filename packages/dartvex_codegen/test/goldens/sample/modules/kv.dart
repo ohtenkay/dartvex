@@ -49,8 +49,11 @@ class KvApi {
     );
     final typedStream$ = subscription$.stream.map((event) {
       switch (event) {
-        case QuerySuccess(:final value):
-          return TypedQuerySuccess<Null>(null);
+        case QuerySuccess(:final value, :final hasPendingWrites):
+          return TypedQuerySuccess<Null>(
+            null,
+            hasPendingWrites: hasPendingWrites,
+          );
         case QueryLoading(:final hasPendingWrites):
           return TypedQueryLoading<Null>(hasPendingWrites: hasPendingWrites);
         case QueryError(:final message, :final data, :final logLines):

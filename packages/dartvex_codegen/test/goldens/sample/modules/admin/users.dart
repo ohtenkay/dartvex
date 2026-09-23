@@ -28,9 +28,10 @@ class AdminUsersApi {
     );
     final typedStream$ = subscription$.stream.map((event) {
       switch (event) {
-        case QuerySuccess(:final value):
+        case QuerySuccess(:final value, :final hasPendingWrites):
           return TypedQuerySuccess<DiagnoseResult>(
             _decodeDiagnoseResult(value),
+            hasPendingWrites: hasPendingWrites,
           );
         case QueryLoading(:final hasPendingWrites):
           return TypedQueryLoading<DiagnoseResult>(

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added `ConvexLocalFunctionCaller`, a generated-API-compatible adapter that
+  maps local query events and mutation results, routes actions locally, and
+  delegates paginated queries to a supplied remote caller.
+- `LocalMutationHandler.optimisticValue` can provide the return value exposed
+  by `LocalMutationQueued`, such as a stable local ID for offline creates.
+
+### Fixed
+
+- Registered optimistic mutation handlers now also run on the connected
+  direct-send path. The pending operation and rollback metadata are persisted
+  before network I/O, remote snapshots rebase the patch while it is pending,
+  success removes it and refreshes affected targets, retryable failures retain
+  the same queue entry, and permanent failures roll it back.
+- Connected creates now persist local-to-server ID remaps before the next FIFO
+  mutation starts, and direct sends resolve those snapshotted arguments before
+  reaching the backend. Permanent failures and successful creates without a
+  server ID block dependents instead of sending unresolved local IDs.
+- Permanent direct failures reload rebased rollback metadata from storage before
+  restoring the cache.
+- `ConvexLocalFunctionCaller` now reports a descriptive error when a queued
+  mutation has no optimistic return value, unless its name is explicitly listed
+  in `nullableQueuedMutations` as a null-returning mutation.
+
 ## [0.2.0] - 2026-06-12
 
 ### Changed

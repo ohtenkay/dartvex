@@ -33,8 +33,11 @@ class ConvexApi {
     );
     final typedStream$ = subscription$.stream.map((event) {
       switch (event) {
-        case QuerySuccess(:final value):
-          return TypedQuerySuccess<HealthResult>(_decodeHealthResult(value));
+        case QuerySuccess(:final value, :final hasPendingWrites):
+          return TypedQuerySuccess<HealthResult>(
+            _decodeHealthResult(value),
+            hasPendingWrites: hasPendingWrites,
+          );
         case QueryLoading(:final hasPendingWrites):
           return TypedQueryLoading<HealthResult>(
             hasPendingWrites: hasPendingWrites,

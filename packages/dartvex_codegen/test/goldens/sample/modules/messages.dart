@@ -39,12 +39,13 @@ class MessagesApi {
     );
     final typedStream$ = subscription$.stream.map((event) {
       switch (event) {
-        case QuerySuccess(:final value):
+        case QuerySuccess(:final value, :final hasPendingWrites):
           return TypedQuerySuccess<List<ListResultItem>>(
             expectList(
               value,
               label: 'ListResult',
             ).map((item) => _decodeListResultItem(item)).toList(),
+            hasPendingWrites: hasPendingWrites,
           );
         case QueryLoading(:final hasPendingWrites):
           return TypedQueryLoading<List<ListResultItem>>(
@@ -102,8 +103,11 @@ class MessagesApi {
     final subscription$ = _client.subscribe('messages:ping', args);
     final typedStream$ = subscription$.stream.map((event) {
       switch (event) {
-        case QuerySuccess(:final value):
-          return TypedQuerySuccess<dynamic>(value);
+        case QuerySuccess(:final value, :final hasPendingWrites):
+          return TypedQuerySuccess<dynamic>(
+            value,
+            hasPendingWrites: hasPendingWrites,
+          );
         case QueryLoading(:final hasPendingWrites):
           return TypedQueryLoading<dynamic>(hasPendingWrites: hasPendingWrites);
         case QueryError(:final message, :final data, :final logLines):

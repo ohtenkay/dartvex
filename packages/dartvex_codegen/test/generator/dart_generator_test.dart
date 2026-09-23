@@ -96,6 +96,13 @@ void main() {
 
       expect(runtime, contains('BigInt expectBigInt'));
       expect(runtime, contains("Expected \${label ?? 'bigint'}"));
+      expect(runtime, contains('class TypedQuerySuccess<T>'));
+      expect(
+        runtime,
+        contains(
+          'const TypedQuerySuccess(this.value, {this.hasPendingWrites = false});',
+        ),
+      );
       expect(runtime, contains('class TypedQueryLoading<T>'));
       expect(runtime, contains('final Object? data;'));
       expect(runtime, contains('final List<String> logLines;'));
@@ -103,6 +110,11 @@ void main() {
       expect(runtime, isNot(contains('List<int>')));
 
       expect(api, contains('final ConvexFunctionCaller _client;'));
+      expect(
+        api,
+        contains('QuerySuccess(:final value, :final hasPendingWrites)'),
+      );
+      expect(api, contains('hasPendingWrites: hasPendingWrites'));
       expect(
         api,
         contains('QueryError(:final message, :final data, :final logLines)'),
