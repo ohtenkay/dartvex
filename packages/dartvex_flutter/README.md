@@ -272,6 +272,13 @@ ConvexMutation<SendArgs, MessagesId>(
 )
 ```
 
+Generated mutation widgets also accept a typed `optimisticUpdate` callback.
+It receives typed mutation arguments, a typed query store, and an invocation
+context whose temporary ID and timestamp stay stable when the update is
+replayed. The query reference checks the argument and result types for
+`getQuery`, `setQuery`, `updateQuery`, and `clearQuery`. The application still
+chooses which queries to update.
+
 ## Connection Status
 
 `ConvexConnectionStatusBuilder` rebuilds on the rich `ConnectionStatus` (inflight

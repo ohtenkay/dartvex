@@ -73,5 +73,7 @@ final ConvexQueryReference<NoArgs, HealthResult> healthQueryReference =
     ConvexQueryReference(
       name: 'index:health',
       encode: (args) => const <String, dynamic>{},
+      decodeArgs: (raw) => const NoArgs(),
       decode: (raw) => _decodeHealthResult(raw),
+      encodeResult: (value) => _encodeHealthResult(value),
     );

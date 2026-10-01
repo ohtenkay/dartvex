@@ -76,6 +76,8 @@ The Flutter output is opt-in and separate from `api.dart`. For example,
 its builder. Call it with named arguments such as
 `create(name: name, alcoholPercentage: percentage, drinkCategory: category)`;
 the generated wrapper constructs and encodes the argument record.
+Generated mutation widgets also accept a typed `optimisticUpdate` callback
+that can read and update generated query references without raw maps.
 `DrinkListCustomQuery` wraps `ConvexTypedQuery` and gives its builder typed
 data, with default loading and error UI. Use `waitingBuilder` or `errorBuilder`
 to replace those states, or the `.snapshot` constructor to handle every state

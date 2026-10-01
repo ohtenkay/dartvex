@@ -16,6 +16,11 @@ export 'package:dartvex/dartvex.dart'
         OptimisticLocalStore,
         OptimisticQueryEntry,
         OptimisticUpdate,
+        OptimisticMutationContext,
+        TypedOptimisticLocalStore,
+        TypedOptimisticQueryEntry,
+        TypedOptimisticUpdate,
+        bindTypedOptimisticUpdate,
         defaultHttpClientFactory,
         defaultWebSocketAdapterOverride;
 

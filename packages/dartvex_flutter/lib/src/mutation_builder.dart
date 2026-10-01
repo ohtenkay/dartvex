@@ -1,7 +1,11 @@
 import 'dart:async';
 
 import 'package:dartvex/dartvex.dart'
-    show ConvexMutationReference, OptimisticUpdate;
+    show
+        ConvexMutationReference,
+        OptimisticUpdate,
+        TypedOptimisticUpdate,
+        bindTypedOptimisticUpdate;
 import 'package:flutter/widgets.dart';
 
 import 'provider.dart';
@@ -9,11 +13,12 @@ import 'runtime_client.dart';
 import 'snapshot.dart';
 
 /// Builder callback for [ConvexMutation].
-typedef ConvexMutationBuilder<Args, Result> = Widget Function(
-  BuildContext context,
-  Future<Result> Function(Args args) mutate,
-  ConvexRequestSnapshot<Result> snapshot,
-);
+typedef ConvexMutationBuilder<Args, Result> =
+    Widget Function(
+      BuildContext context,
+      Future<Result> Function(Args args) mutate,
+      ConvexRequestSnapshot<Result> snapshot,
+    );
 
 /// Widget that exposes an imperative Convex mutation and request snapshot.
 class ConvexMutation<Args, Result> extends StatefulWidget {
@@ -24,7 +29,8 @@ class ConvexMutation<Args, Result> extends StatefulWidget {
     required this.builder,
     this.client,
     this.optimisticUpdate,
-  });
+    this.typedOptimisticUpdate,
+  }) : assert(optimisticUpdate == null || typedOptimisticUpdate == null);
 
   /// Generated mutation reference containing its name and wire codecs.
   final ConvexMutationReference<Args, Result> mutation;
@@ -37,6 +43,9 @@ class ConvexMutation<Args, Result> extends StatefulWidget {
   /// Overlays query results locally the moment the mutation is sent and rolls
   /// back automatically when it completes or fails. See `ConvexClient.mutate`.
   final OptimisticUpdate? optimisticUpdate;
+
+  /// Typed optimistic update with the arguments for this mutation invocation.
+  final TypedOptimisticUpdate<Args>? typedOptimisticUpdate;
 
   /// Builder that receives the mutate callback and current request snapshot.
   final ConvexMutationBuilder<Args, Result> builder;
@@ -118,7 +127,10 @@ class _ConvexMutationState<Args, Result>
     final generation = ++_requestGeneration;
     final runtimeClient = _runtimeClient!;
     final mutation = widget.mutation;
-    final optimisticUpdate = widget.optimisticUpdate;
+    final typedUpdate = widget.typedOptimisticUpdate;
+    final optimisticUpdate = typedUpdate == null
+        ? widget.optimisticUpdate
+        : bindTypedOptimisticUpdate(typedUpdate, args);
     setState(() {
       _snapshot = _snapshot.copyWith(
         error: null,

@@ -332,17 +332,22 @@ final ConvexQueryReference<ListArgs, List<ListResultItem>> listQueryReference =
     ConvexQueryReference(
       name: 'messages:list',
       encode: (args) => _encodeListArgs(args),
+      decodeArgs: (raw) => _decodeListArgs(raw),
       decode: (raw) => expectList(
         raw,
         label: 'ListResult',
       ).map((item) => _decodeListResultItem(item)).toList(),
+      encodeResult: (value) =>
+          value.map((item) => _encodeListResultItem(item)).toList(),
     );
 
 final ConvexQueryReference<Map<String, dynamic>, dynamic> pingQueryReference =
     ConvexQueryReference(
       name: 'messages:ping',
       encode: (args) => args,
+      decodeArgs: (raw) => raw,
       decode: (raw) => raw,
+      encodeResult: (value) => value,
     );
 
 final ConvexMutationReference<SendArgs, MessagesId> sendMutationReference =

@@ -243,5 +243,7 @@ final ConvexQueryReference<DiagnoseArgs, DiagnoseResult>
 diagnoseQueryReference = ConvexQueryReference(
   name: 'admin/users:diagnose',
   encode: (args) => _encodeDiagnoseArgs(args),
+  decodeArgs: (raw) => _decodeDiagnoseArgs(raw),
   decode: (raw) => _decodeDiagnoseResult(raw),
+  encodeResult: (value) => _encodeDiagnoseResult(value),
 );

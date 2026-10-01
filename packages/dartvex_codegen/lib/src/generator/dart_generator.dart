@@ -471,6 +471,7 @@ class DartGenerator {
     var requestArgsExpression = 'const <String, dynamic>{}';
     var referenceArgsType = 'NoArgs';
     var referenceEncodeExpression = 'const <String, dynamic>{}';
+    var referenceDecodeArgsExpression = 'const NoArgs()';
     String signature;
 
     if (argsType is ConvexObjectType && argsType.value.isNotEmpty) {
@@ -504,6 +505,7 @@ class DartGenerator {
       );
       referenceArgsType = argsObject.annotation;
       referenceEncodeExpression = argsObject.encode('args');
+      referenceDecodeArgsExpression = argsObject.decode('raw');
       signature = '{${argsFields.join(', ')}}';
     } else if (argsType is ConvexObjectType && argsType.value.isEmpty) {
       signature = '';
@@ -512,6 +514,7 @@ class DartGenerator {
       requestArgsExpression = 'args';
       referenceArgsType = 'Map<String, dynamic>';
       referenceEncodeExpression = 'args';
+      referenceDecodeArgsExpression = 'raw';
     } else {
       throw StateError(
         'Top-level arguments for ${function.identifier} must be an object or any',
@@ -604,7 +607,11 @@ class DartGenerator {
           '      name: ${dartSingleQuotedString(function.convexFunctionName)},',
         )
         ..writeln('      encode: (args) => $referenceEncodeExpression,')
+        ..writeln('      decodeArgs: (raw) => $referenceDecodeArgsExpression,')
         ..writeln('      decode: (raw) => ${resultType.decode('raw')},')
+        ..writeln(
+          '      encodeResult: (value) => ${resultType.encode('value')},',
+        )
         ..writeln('    );');
     }
 
@@ -1190,13 +1197,13 @@ class $widgetName extends StatelessWidget {
   final ConvexRuntimeClient? client;
 
   /// Optional optimistic update for the mutation.
-  final OptimisticUpdate? optimisticUpdate;
+  final TypedOptimisticUpdate<$argsType>? optimisticUpdate;
 
   @override
   Widget build(BuildContext context) => ConvexMutation<$argsType, $resultType>(
     mutation: ${methodName}MutationReference,
     client: client,
-    optimisticUpdate: optimisticUpdate,
+    typedOptimisticUpdate: optimisticUpdate,
     builder: (context, mutate, snapshot) => builder(
       context,
       $executorName(mutate),

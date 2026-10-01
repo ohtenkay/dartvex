@@ -27,6 +27,13 @@ export 'src/query.dart' show ConvexQueryReference;
 export 'src/storage.dart' show ConvexStorage;
 export 'src/sync/optimistic_updates.dart'
     show OptimisticLocalStore, OptimisticQueryEntry, OptimisticUpdate;
+export 'src/typed_optimistic_update.dart'
+    show
+        OptimisticMutationContext,
+        TypedOptimisticLocalStore,
+        TypedOptimisticQueryEntry,
+        TypedOptimisticUpdate,
+        bindTypedOptimisticUpdate;
 export 'src/sync/paginated_query.dart'
     show
         ConvexPaginatedQuery,

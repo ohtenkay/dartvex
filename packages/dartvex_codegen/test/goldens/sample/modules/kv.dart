@@ -179,5 +179,7 @@ final ConvexQueryReference<WatchArgs, Null> watchQueryReference =
     ConvexQueryReference(
       name: 'kv:watch',
       encode: (args) => _encodeWatchArgs(args),
+      decodeArgs: (raw) => _decodeWatchArgs(raw),
       decode: (raw) => null,
+      encodeResult: (value) => null,
     );
