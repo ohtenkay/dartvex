@@ -1236,7 +1236,14 @@ class $widgetName extends StatelessWidget {
                 .mapType(args, suggestedName: '${prefix}Args', context: context)
                 .annotation;
         final assignments = <String>[];
-        final usedWidgetNames = <String>{'key', 'builder', 'client'};
+        final usedWidgetNames = <String>{
+          'key',
+          'builder',
+          'snapshotBuilder',
+          'waitingBuilder',
+          'errorBuilder',
+          'client',
+        };
         for (final entry in args.value.entries) {
           final fieldName = _naming.fieldName(entry.key);
           var widgetFieldName = fieldName;
@@ -1272,11 +1279,27 @@ class $widgetName extends StatelessWidget {
       declarations.add('''
 /// Flutter widget for ${function.convexFunctionName}.
 class $widgetName extends StatelessWidget {
-  /// Creates a typed query widget.
-  const $widgetName({super.key, required this.builder, this.client, ${constructorArgs.join(', ')}});
+  /// Creates a typed query widget with default loading and error UI.
+  const $widgetName({super.key, required this.builder, this.client, this.waitingBuilder, this.errorBuilder, ${constructorArgs.join(', ')}})
+      : snapshotBuilder = null;
 
-  /// Builds the UI from the latest query snapshot.
-  final Widget Function(BuildContext, ConvexQuerySnapshot<$resultType>) builder;
+  /// Creates a query widget whose builder handles every snapshot state.
+  const $widgetName.snapshot({super.key, required this.snapshotBuilder, this.client, ${constructorArgs.join(', ')}})
+      : builder = null,
+        waitingBuilder = null,
+        errorBuilder = null;
+
+  /// Builds the UI when query data is available.
+  final Widget Function(BuildContext, $resultType)? builder;
+
+  /// Builds the UI from every query snapshot in snapshot mode.
+  final Widget Function(BuildContext, ConvexQuerySnapshot<$resultType>)? snapshotBuilder;
+
+  /// Overrides the initial loading UI.
+  final WidgetBuilder? waitingBuilder;
+
+  /// Overrides the error UI.
+  final Widget Function(BuildContext, Object)? errorBuilder;
 
   /// Optional runtime client override.
   final ConvexRuntimeClient? client;
@@ -1284,12 +1307,25 @@ class $widgetName extends StatelessWidget {
   ${fields.join('\n  ')}
 
   @override
-  Widget build(BuildContext context) => ConvexTypedQuery<$argsType, $resultType>(
-    query: ${methodName}QueryReference,
-    args: $argsExpression,
-    client: client,
-    builder: builder,
-  );
+  Widget build(BuildContext context) {
+    final buildSnapshot = snapshotBuilder;
+    if (buildSnapshot != null) {
+      return ConvexTypedQuery<$argsType, $resultType>.snapshot(
+        query: ${methodName}QueryReference,
+        args: $argsExpression,
+        client: client,
+        snapshotBuilder: buildSnapshot,
+      );
+    }
+    return ConvexTypedQuery<$argsType, $resultType>(
+      query: ${methodName}QueryReference,
+      args: $argsExpression,
+      client: client,
+      builder: builder!,
+      waitingBuilder: waitingBuilder,
+      errorBuilder: errorBuilder,
+    );
+  }
 }
 ''');
     }

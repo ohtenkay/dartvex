@@ -34,7 +34,7 @@ Source and full docs: [github.com/AndreFrelicot/dartvex](https://github.com/Andr
 ## Features
 
 - `ConvexQuery` — reactive query widget with automatic subscription management
-- `ConvexTypedQuery` — reactive query widget using a generated reference for typed arguments and results
+- `ConvexTypedQuery` — reactive query widget using a generated reference, typed data builder, and overridable loading and error UI
 - `ConvexMutation` / `ConvexAction` — request builder widgets, with optional
   optimistic updates on `ConvexMutation`
 - `ConvexImage` — native image display from Convex file storage

@@ -76,10 +76,12 @@ The Flutter output is opt-in and separate from `api.dart`. For example,
 its builder. Call it with named arguments such as
 `create(name: name, alcoholPercentage: percentage, drinkCategory: category)`;
 the generated wrapper constructs and encodes the argument record.
-`DrinkListCustomQuery` wraps `ConvexTypedQuery` and gives its builder a typed
-`ConvexQuerySnapshot`. Query widgets accept named query arguments and manage
-their subscriptions automatically. Paginated queries continue to use the
-generated pagination API.
+`DrinkListCustomQuery` wraps `ConvexTypedQuery` and gives its builder typed
+data, with default loading and error UI. Use `waitingBuilder` or `errorBuilder`
+to replace those states, or the `.snapshot` constructor to handle every state
+and its metadata. Query widgets accept named arguments and manage their
+subscriptions automatically. Paginated queries continue to use the generated
+pagination API.
 
 Before committing an exported spec file, scrub the real deployment URL it
 bakes in:
