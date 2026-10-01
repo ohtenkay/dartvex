@@ -131,7 +131,8 @@ class DartGenerator {
       }
       if (widgetPaths.isNotEmpty) {
         files['widgets.dart'] = _formatOrThrow(
-          '${widgetPaths.map((path) => "export '$path';").join('\n')}\n',
+          '$generatedFileHeader\n\n'
+              '${widgetPaths.map((path) => "export '$path';").join('\n')}\n',
           'widgets.dart',
         );
       }
@@ -1177,7 +1178,9 @@ class $widgetName extends StatelessWidget {
 ''');
     }
     if (context.usesTypedData) imports.add('dart:typed_data');
-    return '$generatedFileHeader\n$generatedFileIgnores\n\n${imports.render()}\n\n${declarations.join('\n')}';
+    return '$generatedFileHeader\n$generatedFileIgnores\n'
+        '// ignore_for_file: unnecessary_import\n\n'
+        '${imports.render()}\n\n${declarations.join('\n')}';
   }
 
   void _validateModulePathSegment(String segment, String identifier) {
