@@ -9,6 +9,7 @@ class GenerateConfig {
     required this.dryRun,
     required this.verbose,
     required this.watch,
+    this.flutterWidgets = false,
     this.discriminator = 'kind',
     this.projectDirectory,
     this.specFile,
@@ -35,6 +36,9 @@ class GenerateConfig {
   /// Whether the generator should watch for source changes and rerun automatically.
   final bool watch;
 
+  /// Whether to generate typed Flutter mutation widgets.
+  final bool flutterWidgets;
+
   /// Object-union field used to select generated sealed subclasses.
   final String discriminator;
 
@@ -52,6 +56,7 @@ class GenerateConfig {
       dryRun: dryRun,
       verbose: verbose,
       watch: watch,
+      flutterWidgets: flutterWidgets,
       discriminator: discriminator,
     );
   }

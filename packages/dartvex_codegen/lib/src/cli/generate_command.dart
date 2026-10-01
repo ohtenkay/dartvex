@@ -67,6 +67,7 @@ class GenerateCommand {
       ..addOption('client-import', defaultsTo: 'package:dartvex/dartvex.dart')
       ..addOption('discriminator', defaultsTo: 'kind')
       ..addFlag('watch', negatable: false)
+      ..addFlag('flutter-widgets', negatable: false)
       ..addFlag('dry-run', negatable: false)
       ..addFlag('verbose', negatable: false);
   }
@@ -121,6 +122,7 @@ class GenerateCommand {
       dryRun: parsed['dry-run'] as bool,
       verbose: parsed['verbose'] as bool,
       watch: parsed['watch'] as bool,
+      flutterWidgets: parsed['flutter-widgets'] as bool,
       discriminator: parsed['discriminator'] as String,
     );
     config.validate();
@@ -151,6 +153,7 @@ class GenerateCommand {
       clientImport: config.clientImport,
       schema: schema,
       discriminator: config.discriminator,
+      generateFlutterWidgets: config.flutterWidgets,
     ).generate(spec);
 
     if (config.dryRun) {

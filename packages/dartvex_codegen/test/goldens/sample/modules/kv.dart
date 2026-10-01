@@ -23,11 +23,7 @@ class KvApi {
   }
 
   ConvexMutationReference<LinkArgs, void> get linkMutation =>
-      ConvexMutationReference(
-        name: 'kv:link',
-        encode: (args) => _encodeLinkArgs(args),
-        decode: (raw) => null,
-      );
+      linkMutationReference;
 
   Future<bool> setValue({
     required String key,
@@ -42,11 +38,7 @@ class KvApi {
   }
 
   ConvexMutationReference<SetTypeArgs, bool> get setValueMutation =>
-      ConvexMutationReference(
-        name: 'kv:set',
-        encode: (args) => _encodeSetTypeArgs(args),
-        decode: (raw) => expectBool(raw, label: 'SetTypeResult'),
-      );
+      setValueMutationReference;
 
   Future<Null> watch({required String subscription}) async {
     await _client.query(
@@ -166,3 +158,17 @@ WatchArgs _decodeWatchArgs(dynamic raw) {
     ),
   );
 }
+
+final ConvexMutationReference<LinkArgs, void> linkMutationReference =
+    ConvexMutationReference(
+      name: 'kv:link',
+      encode: (args) => _encodeLinkArgs(args),
+      decode: (raw) => null,
+    );
+
+final ConvexMutationReference<SetTypeArgs, bool> setValueMutationReference =
+    ConvexMutationReference(
+      name: 'kv:set',
+      encode: (args) => _encodeSetTypeArgs(args),
+      decode: (raw) => expectBool(raw, label: 'SetTypeResult'),
+    );

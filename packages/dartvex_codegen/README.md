@@ -65,10 +65,17 @@ dart run dartvex_codegen generate \
 Useful flags:
 
 - `--client-import package:dartvex/dartvex.dart`
+- `--flutter-widgets` generates `widgets.dart` with a typed widget for every public mutation. Add `dartvex_flutter` and Flutter to the consuming app.
 - `--discriminator kind`
 - `--dry-run`
 - `--verbose`
 - `--watch`
+
+The Flutter output is opt-in and separate from `api.dart`. For example,
+`DrinkCreateMutation` wraps `ConvexMutation` and passes a typed callable to
+its builder. Call it with named arguments such as
+`create(name: name, alcoholPercentage: percentage, drinkCategory: category)`;
+the generated wrapper constructs and encodes the argument record.
 
 Before committing an exported spec file, scrub the real deployment URL it
 bakes in:

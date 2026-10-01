@@ -54,6 +54,7 @@ class DartGenerator {
     this.clientImport = 'package:dartvex/dartvex.dart',
     this.schema,
     this.discriminator = 'kind',
+    this.generateFlutterWidgets = false,
   }) : _naming = naming ?? const Naming();
 
   final Naming _naming;
@@ -66,6 +67,9 @@ class DartGenerator {
 
   /// Required string-literal field used by discriminated object unions.
   final String discriminator;
+
+  /// Emits an optional Flutter layer with one widget per public mutation.
+  final bool generateFlutterWidgets;
 
   SchemaTypeRegistry? _schemaTypes;
   Set<String> _externalTypeNames = const <String>{};
@@ -108,6 +112,29 @@ class DartGenerator {
       }
       warnings.addAll(node.renderWarnings);
       warnings.addAll(node.typeWarnings);
+    }
+
+    if (generateFlutterWidgets) {
+      final widgetPaths = <String>[];
+      for (final node in _flattenNodes(root)) {
+        if (!node.functions.any(
+          (function) => function.functionType == 'Mutation',
+        )) {
+          continue;
+        }
+        final widgetPath = _widgetFilePath(node);
+        files[widgetPath] = _formatOrThrow(
+          _renderMutationWidgets(node),
+          widgetPath,
+        );
+        widgetPaths.add(widgetPath);
+      }
+      if (widgetPaths.isNotEmpty) {
+        files['widgets.dart'] = _formatOrThrow(
+          '${widgetPaths.map((path) => "export '$path';").join('\n')}\n',
+          'widgets.dart',
+        );
+      }
     }
 
     files['schema.dart'] = _formatOrThrow(
@@ -554,13 +581,19 @@ class DartGenerator {
     if (function.functionType == 'Mutation') {
       final mutationResultType =
           resultType.annotation == 'Null' ? 'void' : resultType.annotation;
+      final referenceName = '${methodName}MutationReference';
       methodBuffer
         ..writeln()
         ..writeln(
           'ConvexMutationReference<$mutationArgsType, '
           '$mutationResultType> get ${methodName}Mutation =>',
         )
-        ..writeln('    ConvexMutationReference(')
+        ..writeln('    $referenceName;');
+      helperBuffer
+        ..writeln(
+          'final ConvexMutationReference<$mutationArgsType, '
+          '$mutationResultType> $referenceName = ConvexMutationReference(',
+        )
         ..writeln(
           '      name: ${dartSingleQuotedString(function.convexFunctionName)},',
         )
@@ -1022,6 +1055,130 @@ String describeType(dynamic value) {
 
   String _moduleFilePath(_ModuleNode node) =>
       'modules/${node.pathSegments.join('/')}.dart';
+
+  String _widgetFilePath(_ModuleNode node) =>
+      node.pathSegments.isEmpty
+          ? 'widgets/root.dart'
+          : 'widgets/${node.pathSegments.join('/')}.dart';
+
+  String _renderMutationWidgets(_ModuleNode node) {
+    final filePath = _widgetFilePath(node);
+    final modulePath =
+        node.pathSegments.isEmpty ? 'api.dart' : _moduleFilePath(node);
+    final imports =
+        ImportManager()
+          ..add('package:flutter/widgets.dart')
+          ..add('package:dartvex_flutter/dartvex_flutter.dart')
+          ..add(
+            _naming.relativeImport(fromFile: filePath, targetFile: 'api.dart'),
+          );
+    if (modulePath != 'api.dart') {
+      imports.add(
+        _naming.relativeImport(fromFile: filePath, targetFile: modulePath),
+      );
+    }
+    final context = TypeRenderContext(
+      naming: _naming,
+      schemaTypes: _schemaTypes,
+      discriminator: discriminator,
+      externalTypeNames: _externalTypeNames,
+    );
+    final mapper = TypeMapper(naming: _naming);
+    final declarations = <String>[];
+    for (final function in node.functions.where(
+      (function) => function.functionType == 'Mutation',
+    )) {
+      final prefix = _naming.typeName(function.functionName);
+      final modulePrefix = _naming.moduleClassName(node.pathSegments);
+      final baseName =
+          '${modulePrefix.substring(0, modulePrefix.length - 3)}$prefix';
+      final widgetName = '${baseName}Mutation';
+      final executorName = '${baseName}MutationExecutor';
+      final methodName = _naming.methodName(function.functionName);
+      final mappedResult = mapper.mapType(
+        function.returns,
+        suggestedName: '${prefix}Result',
+        context: context,
+      );
+      final resultType =
+          mappedResult.annotation == 'Null' ? 'void' : mappedResult.annotation;
+      final args = function.args;
+      var argsType = 'NoArgs';
+      var callSignature = '';
+      var argsExpression = 'const NoArgs()';
+      if (args is ConvexObjectType && args.value.isNotEmpty) {
+        argsType =
+            mapper
+                .mapType(args, suggestedName: '${prefix}Args', context: context)
+                .annotation;
+        final fields = <String>[];
+        final assignments = <String>[];
+        for (final entry in args.value.entries) {
+          final fieldName = _naming.fieldName(entry.key);
+          final mappedField = mapper.mapType(
+            entry.value.fieldType,
+            suggestedName: '${prefix}Args${_naming.typeName(entry.key)}',
+            context: context,
+            fieldName: entry.key,
+          );
+          fields.add(
+            entry.value.optional
+                ? 'Optional<${mappedField.annotation}> $fieldName = const Optional.absent()'
+                : 'required ${mappedField.annotation} $fieldName',
+          );
+          assignments.add('$fieldName: $fieldName');
+        }
+        callSignature = '{${fields.join(', ')}}';
+        argsExpression = '(${assignments.join(', ')})';
+      } else if (args is ConvexAnyType) {
+        argsType = 'Map<String, dynamic>';
+        callSignature =
+            '[Map<String, dynamic> args = const <String, dynamic>{}]';
+        argsExpression = 'args';
+      }
+      declarations.add('''
+/// Callable typed mutation for ${function.convexFunctionName}.
+class $executorName {
+  /// Creates an executor backed by the mutation widget.
+  const $executorName(this._mutate);
+
+  final Future<$resultType> Function($argsType) _mutate;
+
+  /// Runs the mutation.
+  Future<$resultType> call($callSignature) => _mutate($argsExpression);
+}
+
+/// Flutter widget for ${function.convexFunctionName}.
+class $widgetName extends StatelessWidget {
+  /// Creates a typed mutation widget.
+  const $widgetName({super.key, required this.builder, this.client, this.optimisticUpdate});
+
+  /// Builds the UI with the callable mutation and current request state.
+  final Widget Function(BuildContext, $executorName, ConvexRequestSnapshot<$resultType>) builder;
+
+  /// Optional runtime client override.
+  final ConvexRuntimeClient? client;
+
+  /// Optional optimistic update for the mutation.
+  final OptimisticUpdate? optimisticUpdate;
+
+  @override
+  Widget build(BuildContext context) => ConvexMutation<$argsType, $resultType>(
+    mutation: ${methodName}MutationReference,
+    client: client,
+    optimisticUpdate: optimisticUpdate,
+    builder: (context, mutate, snapshot) => builder(
+      context,
+      $executorName(mutate),
+      snapshot,
+    ),
+  );
+}
+''');
+    }
+    if (context.usesTypedData) imports.add('dart:typed_data');
+    return '$generatedFileHeader\n$generatedFileIgnores\n\n${imports.render()}\n\n${declarations.join('\n')}';
+  }
 
   void _validateModulePathSegment(String segment, String identifier) {
     if (segment.isEmpty ||
