@@ -49,6 +49,9 @@ class ConvexApi {
     });
     return TypedConvexSubscription<HealthResult>(subscription$, typedStream$);
   }
+
+  ConvexQueryReference<NoArgs, HealthResult> get healthQuery =>
+      healthQueryReference;
 }
 
 typedef HealthResult = ({bool ok});
@@ -65,3 +68,10 @@ HealthResult _decodeHealthResult(dynamic raw) {
   }
   return (ok: expectBool(map['ok'], label: 'HealthResultOk'));
 }
+
+final ConvexQueryReference<NoArgs, HealthResult> healthQueryReference =
+    ConvexQueryReference(
+      name: 'index:health',
+      encode: (args) => const <String, dynamic>{},
+      decode: (raw) => _decodeHealthResult(raw),
+    );

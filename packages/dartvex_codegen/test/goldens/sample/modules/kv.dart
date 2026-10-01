@@ -65,6 +65,8 @@ class KvApi {
     });
     return TypedConvexSubscription<Null>(subscription$, typedStream$);
   }
+
+  ConvexQueryReference<WatchArgs, Null> get watchQuery => watchQueryReference;
 }
 
 typedef LinkArgs = ({Optional<UsersId?> target, Optional<List<String>?> tags});
@@ -171,4 +173,11 @@ final ConvexMutationReference<SetTypeArgs, bool> setValueMutationReference =
       name: 'kv:set',
       encode: (args) => _encodeSetTypeArgs(args),
       decode: (raw) => expectBool(raw, label: 'SetTypeResult'),
+    );
+
+final ConvexQueryReference<WatchArgs, Null> watchQueryReference =
+    ConvexQueryReference(
+      name: 'kv:watch',
+      encode: (args) => _encodeWatchArgs(args),
+      decode: (raw) => null,
     );

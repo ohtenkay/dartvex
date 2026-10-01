@@ -65,7 +65,7 @@ dart run dartvex_codegen generate \
 Useful flags:
 
 - `--client-import package:dartvex/dartvex.dart`
-- `--flutter-widgets` generates `widgets.dart` with a typed widget for every public mutation. Add `dartvex_flutter` and Flutter to the consuming app.
+- `--flutter-widgets` generates `widgets.dart` with a typed widget for every public mutation and non-paginated query. Add `dartvex_flutter` and Flutter to the consuming app.
 - `--discriminator kind`
 - `--dry-run`
 - `--verbose`
@@ -76,6 +76,10 @@ The Flutter output is opt-in and separate from `api.dart`. For example,
 its builder. Call it with named arguments such as
 `create(name: name, alcoholPercentage: percentage, drinkCategory: category)`;
 the generated wrapper constructs and encodes the argument record.
+`DrinkListCustomQuery` wraps `ConvexTypedQuery` and gives its builder a typed
+`ConvexQuerySnapshot`. Query widgets accept named query arguments and manage
+their subscriptions automatically. Paginated queries continue to use the
+generated pagination API.
 
 Before committing an exported spec file, scrub the real deployment URL it
 bakes in:

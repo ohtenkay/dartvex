@@ -47,6 +47,9 @@ class AdminUsersApi {
     return TypedConvexSubscription<DiagnoseResult>(subscription$, typedStream$);
   }
 
+  ConvexQueryReference<DiagnoseArgs, DiagnoseResult> get diagnoseQuery =>
+      diagnoseQueryReference;
+
   Future<SyncTypeResult> syncValue({
     required Map<String, SyncTypeArgsPayloadValue> payload,
     required SyncTypeArgsMode mode,
@@ -235,3 +238,10 @@ SyncTypeArgs _decodeSyncTypeArgs(dynamic raw) {
     mode: SyncTypeArgsMode.fromJson(map['mode']),
   );
 }
+
+final ConvexQueryReference<DiagnoseArgs, DiagnoseResult>
+diagnoseQueryReference = ConvexQueryReference(
+  name: 'admin/users:diagnose',
+  encode: (args) => _encodeDiagnoseArgs(args),
+  decode: (raw) => _decodeDiagnoseResult(raw),
+);

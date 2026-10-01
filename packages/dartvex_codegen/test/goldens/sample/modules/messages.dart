@@ -64,6 +64,9 @@ class MessagesApi {
     );
   }
 
+  ConvexQueryReference<ListArgs, List<ListResultItem>> get listQuery =>
+      listQueryReference;
+
   TypedConvexPaginatedQuery<PaginatePublicPageItem> paginatePublic({
     Optional<String> channel = const Optional.absent(),
     int pageSize = 20,
@@ -116,6 +119,9 @@ class MessagesApi {
     });
     return TypedConvexSubscription<dynamic>(subscription$, typedStream$);
   }
+
+  ConvexQueryReference<Map<String, dynamic>, dynamic> get pingQuery =>
+      pingQueryReference;
 
   TypedConvexPaginatedQuery<Map<String, dynamic>> searchPublic({
     required String query,
@@ -321,6 +327,23 @@ SendArgs _decodeSendArgs(dynamic raw) {
         : const Optional.absent(),
   );
 }
+
+final ConvexQueryReference<ListArgs, List<ListResultItem>> listQueryReference =
+    ConvexQueryReference(
+      name: 'messages:list',
+      encode: (args) => _encodeListArgs(args),
+      decode: (raw) => expectList(
+        raw,
+        label: 'ListResult',
+      ).map((item) => _decodeListResultItem(item)).toList(),
+    );
+
+final ConvexQueryReference<Map<String, dynamic>, dynamic> pingQueryReference =
+    ConvexQueryReference(
+      name: 'messages:ping',
+      encode: (args) => args,
+      decode: (raw) => raw,
+    );
 
 final ConvexMutationReference<SendArgs, MessagesId> sendMutationReference =
     ConvexMutationReference(

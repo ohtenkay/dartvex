@@ -118,13 +118,16 @@ class DartGenerator {
       final widgetPaths = <String>[];
       for (final node in _flattenNodes(root)) {
         if (!node.functions.any(
-          (function) => function.functionType == 'Mutation',
+          (function) =>
+              function.functionType == 'Mutation' ||
+              (function.functionType == 'Query' &&
+                  _detectPagination(function) == null),
         )) {
           continue;
         }
         final widgetPath = _widgetFilePath(node);
         files[widgetPath] = _formatOrThrow(
-          _renderMutationWidgets(node),
+          _renderFlutterWidgets(node),
           widgetPath,
         );
         widgetPaths.add(widgetPath);
@@ -251,6 +254,13 @@ class DartGenerator {
           addMember(
             '${methodName}Mutation',
             'typed mutation reference for "${function.identifier}"',
+          );
+        }
+        if (function.functionType == 'Query' &&
+            _detectPagination(function) == null) {
+          addMember(
+            '${methodName}Query',
+            'typed query reference for "${function.identifier}"',
           );
         }
         // Paginated queries emit a single wrapper method, no Subscribe
@@ -459,8 +469,8 @@ class DartGenerator {
     final methodBuffer = StringBuffer();
     final helperBuffer = StringBuffer();
     var requestArgsExpression = 'const <String, dynamic>{}';
-    var mutationArgsType = 'NoArgs';
-    var mutationEncodeExpression = 'const <String, dynamic>{}';
+    var referenceArgsType = 'NoArgs';
+    var referenceEncodeExpression = 'const <String, dynamic>{}';
     String signature;
 
     if (argsType is ConvexObjectType && argsType.value.isNotEmpty) {
@@ -492,16 +502,16 @@ class DartGenerator {
       requestArgsExpression = argsObject.encode(
         '(${recordAssignments.join(', ')})',
       );
-      mutationArgsType = argsObject.annotation;
-      mutationEncodeExpression = argsObject.encode('args');
+      referenceArgsType = argsObject.annotation;
+      referenceEncodeExpression = argsObject.encode('args');
       signature = '{${argsFields.join(', ')}}';
     } else if (argsType is ConvexObjectType && argsType.value.isEmpty) {
       signature = '';
     } else if (argsType is ConvexAnyType) {
       signature = '[Map<String, dynamic> args = const <String, dynamic>{}]';
       requestArgsExpression = 'args';
-      mutationArgsType = 'Map<String, dynamic>';
-      mutationEncodeExpression = 'args';
+      referenceArgsType = 'Map<String, dynamic>';
+      referenceEncodeExpression = 'args';
     } else {
       throw StateError(
         'Top-level arguments for ${function.identifier} must be an object or any',
@@ -577,6 +587,25 @@ class DartGenerator {
           'subscription\$, typedStream\$);',
         )
         ..writeln('}');
+      final referenceName = '${methodName}QueryReference';
+      methodBuffer
+        ..writeln()
+        ..writeln(
+          'ConvexQueryReference<$referenceArgsType, '
+          '${resultType.annotation}> get ${methodName}Query =>',
+        )
+        ..writeln('    $referenceName;');
+      helperBuffer
+        ..writeln(
+          'final ConvexQueryReference<$referenceArgsType, '
+          '${resultType.annotation}> $referenceName = ConvexQueryReference(',
+        )
+        ..writeln(
+          '      name: ${dartSingleQuotedString(function.convexFunctionName)},',
+        )
+        ..writeln('      encode: (args) => $referenceEncodeExpression,')
+        ..writeln('      decode: (raw) => ${resultType.decode('raw')},')
+        ..writeln('    );');
     }
 
     if (function.functionType == 'Mutation') {
@@ -586,19 +615,19 @@ class DartGenerator {
       methodBuffer
         ..writeln()
         ..writeln(
-          'ConvexMutationReference<$mutationArgsType, '
+          'ConvexMutationReference<$referenceArgsType, '
           '$mutationResultType> get ${methodName}Mutation =>',
         )
         ..writeln('    $referenceName;');
       helperBuffer
         ..writeln(
-          'final ConvexMutationReference<$mutationArgsType, '
+          'final ConvexMutationReference<$referenceArgsType, '
           '$mutationResultType> $referenceName = ConvexMutationReference(',
         )
         ..writeln(
           '      name: ${dartSingleQuotedString(function.convexFunctionName)},',
         )
-        ..writeln('      encode: (args) => $mutationEncodeExpression,')
+        ..writeln('      encode: (args) => $referenceEncodeExpression,')
         ..writeln('      decode: (raw) => ${resultType.decode('raw')},')
         ..writeln('    );');
     }
@@ -1062,7 +1091,7 @@ String describeType(dynamic value) {
           ? 'widgets/root.dart'
           : 'widgets/${node.pathSegments.join('/')}.dart';
 
-  String _renderMutationWidgets(_ModuleNode node) {
+  String _renderFlutterWidgets(_ModuleNode node) {
     final filePath = _widgetFilePath(node);
     final modulePath =
         node.pathSegments.isEmpty ? 'api.dart' : _moduleFilePath(node);
@@ -1173,6 +1202,87 @@ class $widgetName extends StatelessWidget {
       $executorName(mutate),
       snapshot,
     ),
+  );
+}
+''');
+    }
+    for (final function in node.functions.where(
+      (function) =>
+          function.functionType == 'Query' &&
+          _detectPagination(function) == null,
+    )) {
+      final prefix = _naming.typeName(function.functionName);
+      final modulePrefix = _naming.moduleClassName(node.pathSegments);
+      final baseName =
+          '${modulePrefix.substring(0, modulePrefix.length - 3)}$prefix';
+      final widgetName = '${baseName}Query';
+      final methodName = _naming.methodName(function.functionName);
+      final resultType =
+          mapper
+              .mapType(
+                function.returns,
+                suggestedName: '${prefix}Result',
+                context: context,
+              )
+              .annotation;
+      final args = function.args;
+      var argsType = 'NoArgs';
+      var argsExpression = 'const NoArgs()';
+      final constructorArgs = <String>[];
+      final fields = <String>[];
+      if (args is ConvexObjectType && args.value.isNotEmpty) {
+        argsType =
+            mapper
+                .mapType(args, suggestedName: '${prefix}Args', context: context)
+                .annotation;
+        final assignments = <String>[];
+        for (final entry in args.value.entries) {
+          final fieldName = _naming.fieldName(entry.key);
+          final mappedField = mapper.mapType(
+            entry.value.fieldType,
+            suggestedName: '${prefix}Args${_naming.typeName(entry.key)}',
+            context: context,
+            fieldName: entry.key,
+          );
+          final fieldType =
+              entry.value.optional
+                  ? 'Optional<${mappedField.annotation}>'
+                  : mappedField.annotation;
+          fields.add('final $fieldType $fieldName;');
+          constructorArgs.add(
+            entry.value.optional
+                ? 'this.$fieldName = const Optional.absent()'
+                : 'required this.$fieldName',
+          );
+          assignments.add('$fieldName: $fieldName');
+        }
+        argsExpression = '(${assignments.join(', ')})';
+      } else if (args is ConvexAnyType) {
+        argsType = 'Map<String, dynamic>';
+        fields.add('final Map<String, dynamic> args;');
+        constructorArgs.add('this.args = const <String, dynamic>{}');
+        argsExpression = 'args';
+      }
+      declarations.add('''
+/// Flutter widget for ${function.convexFunctionName}.
+class $widgetName extends StatelessWidget {
+  /// Creates a typed query widget.
+  const $widgetName({super.key, required this.builder, this.client, ${constructorArgs.join(', ')}});
+
+  /// Builds the UI from the latest query snapshot.
+  final Widget Function(BuildContext, ConvexQuerySnapshot<$resultType>) builder;
+
+  /// Optional runtime client override.
+  final ConvexRuntimeClient? client;
+
+  ${fields.join('\n  ')}
+
+  @override
+  Widget build(BuildContext context) => ConvexTypedQuery<$argsType, $resultType>(
+    query: ${methodName}QueryReference,
+    args: $argsExpression,
+    client: client,
+    builder: builder,
   );
 }
 ''');

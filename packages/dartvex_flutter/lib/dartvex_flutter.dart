@@ -10,6 +10,7 @@ export 'package:dartvex/dartvex.dart'
         ConvexPaginatedResult,
         ConvexPaginationStatus,
         ConvexMutationReference,
+        ConvexQueryReference,
         ConvexStorageException,
         NoArgs,
         OptimisticLocalStore,
@@ -53,6 +54,7 @@ export 'src/paginated_query_builder.dart'
     show PaginatedQueryBuilder, PaginatedQueryWidgetBuilder, PaginationStatus;
 export 'src/provider.dart' show ConvexProvider;
 export 'src/query_builder.dart' show ConvexQuery, ConvexQueryWidgetBuilder;
+export 'src/typed_query_builder.dart' show ConvexTypedQuery;
 export 'src/runtime_client.dart'
     show
         ConvexClientRuntime,
