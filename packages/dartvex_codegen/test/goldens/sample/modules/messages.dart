@@ -140,6 +140,13 @@ class MessagesApi {
     );
     return MessagesId(expectString(raw$, label: 'SendResult'));
   }
+
+  ConvexMutationReference<SendArgs, MessagesId> get sendMutation =>
+      ConvexMutationReference(
+        name: 'messages:send',
+        encode: (args) => _encodeSendArgs(args),
+        decode: (raw) => MessagesId(expectString(raw, label: 'SendResult')),
+      );
 }
 
 enum ListResultItemStatus {

@@ -6,6 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'test_helpers/fake_runtime_client.dart';
 
+ConvexMutationReference<Map<String, dynamic>, T> rawMutation<T>(String name) =>
+    ConvexMutationReference(
+      name: name,
+      encode: (args) => args,
+      decode: (raw) => raw as T,
+    );
+
 void main() {
   Widget wrapWithProvider({
     required FakeRuntimeClient client,
@@ -24,14 +31,14 @@ void main() {
     final completer = Completer<dynamic>();
     client.onMutate = (_, __) => completer.future;
 
-    late ConvexRequestExecutor<String> mutate;
+    late Future<String> Function(Map<String, dynamic>) mutate;
     late ConvexRequestSnapshot<String> snapshot;
 
     await tester.pumpWidget(
       wrapWithProvider(
         client: client,
-        child: ConvexMutation<String>(
-          mutation: 'messages:send',
+        child: ConvexMutation<Map<String, dynamic>, String>(
+          mutation: rawMutation<String>('messages:send'),
           builder: (context, execute, state) {
             mutate = execute;
             snapshot = state;
@@ -64,14 +71,14 @@ void main() {
     final completer = Completer<dynamic>();
     client.onMutate = (_, __) => completer.future;
 
-    late ConvexRequestExecutor<String> mutate;
+    late Future<String> Function(Map<String, dynamic>) mutate;
     late ConvexRequestSnapshot<String> snapshot;
 
     await tester.pumpWidget(
       wrapWithProvider(
         client: client,
-        child: ConvexMutation<String>(
-          mutation: 'messages:send',
+        child: ConvexMutation<Map<String, dynamic>, String>(
+          mutation: rawMutation<String>('messages:send'),
           builder: (context, execute, state) {
             mutate = execute;
             snapshot = state;
@@ -81,7 +88,7 @@ void main() {
       ),
     );
 
-    final future = mutate();
+    final future = mutate(const <String, dynamic>{});
     await tester.pump();
     final expectation = expectLater(future, throwsA(isA<StateError>()));
     completer.completeError(StateError('failed'));
@@ -98,13 +105,13 @@ void main() {
     final completer = Completer<dynamic>();
     client.onMutate = (_, __) => completer.future;
 
-    late ConvexRequestExecutor<String> mutate;
+    late Future<String> Function(Map<String, dynamic>) mutate;
 
     await tester.pumpWidget(
       wrapWithProvider(
         client: client,
-        child: ConvexMutation<String>(
-          mutation: 'messages:send',
+        child: ConvexMutation<Map<String, dynamic>, String>(
+          mutation: rawMutation<String>('messages:send'),
           builder: (context, execute, state) {
             mutate = execute;
             return const SizedBox();
@@ -113,9 +120,9 @@ void main() {
       ),
     );
 
-    final future = mutate();
+    final future = mutate(const <String, dynamic>{});
     await tester.pump();
-    await expectLater(mutate(), throwsStateError);
+    await expectLater(mutate(const <String, dynamic>{}), throwsStateError);
     completer.complete('ok');
     await future;
     await tester.pump();
@@ -137,14 +144,14 @@ void main() {
       return Future<dynamic>.error(StateError('unexpected mutation $name'));
     };
 
-    late ConvexRequestExecutor<String> mutate;
+    late Future<String> Function(Map<String, dynamic>) mutate;
     late ConvexRequestSnapshot<String> snapshot;
 
     Widget build(String mutation) {
       return wrapWithProvider(
         client: client,
-        child: ConvexMutation<String>(
-          mutation: mutation,
+        child: ConvexMutation<Map<String, dynamic>, String>(
+          mutation: rawMutation<String>(mutation),
           builder: (context, execute, state) {
             mutate = execute;
             snapshot = state;
@@ -155,7 +162,7 @@ void main() {
     }
 
     await tester.pumpWidget(build('messages:first'));
-    final firstFuture = mutate();
+    final firstFuture = mutate(const <String, dynamic>{});
     await tester.pump();
     expect(snapshot.isLoading, isTrue);
 
@@ -163,7 +170,7 @@ void main() {
     expect(snapshot.isLoading, isFalse);
     expect(snapshot.hasData, isFalse);
 
-    final secondFuture = mutate();
+    final secondFuture = mutate(const <String, dynamic>{});
     await tester.pump();
     expect(client.mutateCalls.last.name, 'messages:second');
     expect(snapshot.isLoading, isTrue);
@@ -191,12 +198,12 @@ void main() {
       ]);
     }
 
-    late ConvexRequestExecutor<String> mutate;
+    late Future<String> Function(Map<String, dynamic>) mutate;
     await tester.pumpWidget(
       wrapWithProvider(
         client: client,
-        child: ConvexMutation<String>(
-          mutation: 'messages:send',
+        child: ConvexMutation<Map<String, dynamic>, String>(
+          mutation: rawMutation<String>('messages:send'),
           optimisticUpdate: optimistic,
           builder: (context, execute, state) {
             mutate = execute;
@@ -349,13 +356,13 @@ void main() {
       final client = FakeRuntimeClient();
       final pending = Completer<dynamic>();
       client.onMutate = (name, args) => pending.future;
-      late ConvexRequestExecutor<dynamic> mutate;
+      late Future<dynamic> Function(Map<String, dynamic>) mutate;
 
       await tester.pumpWidget(
         wrapWithProvider(
           client: client,
-          child: ConvexMutation<dynamic>(
-            mutation: 'messages:send',
+          child: ConvexMutation<Map<String, dynamic>, dynamic>(
+            mutation: rawMutation<dynamic>('messages:send'),
             builder: (context, execute, state) {
               mutate = execute;
               return const SizedBox();
@@ -366,8 +373,8 @@ void main() {
 
       // Double-tap: both returned futures are ignored, as in a plain
       // onPressed handler. The second call hits the in-flight guard.
-      unawaited(mutate());
-      mutate();
+      unawaited(mutate(const <String, dynamic>{}));
+      mutate(const <String, dynamic>{});
       pending.complete('done');
       await tester.pump();
 
@@ -380,14 +387,14 @@ void main() {
     final client = FakeRuntimeClient();
     final pending = Completer<dynamic>();
     client.onMutate = (name, args) => pending.future;
-    late ConvexRequestExecutor<dynamic> mutate;
+    late Future<dynamic> Function(Map<String, dynamic>) mutate;
     late ConvexRequestSnapshot<dynamic> snapshot;
 
     await tester.pumpWidget(
       wrapWithProvider(
         client: client,
-        child: ConvexMutation<dynamic>(
-          mutation: 'messages:send',
+        child: ConvexMutation<Map<String, dynamic>, dynamic>(
+          mutation: rawMutation<dynamic>('messages:send'),
           builder: (context, execute, state) {
             mutate = execute;
             snapshot = state;
@@ -397,7 +404,7 @@ void main() {
       ),
     );
 
-    unawaited(mutate());
+    unawaited(mutate(const <String, dynamic>{}));
     pending.completeError(StateError('failed'));
     await tester.pump();
 

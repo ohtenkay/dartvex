@@ -219,6 +219,12 @@ class DartGenerator {
       for (final function in node.functions) {
         final methodName = _naming.methodName(function.functionName);
         addMember(methodName, 'function "${function.identifier}"');
+        if (function.functionType == 'Mutation') {
+          addMember(
+            '${methodName}Mutation',
+            'typed mutation reference for "${function.identifier}"',
+          );
+        }
         // Paginated queries emit a single wrapper method, no Subscribe
         // helper; reserving one would reject names that never collide.
         if (function.functionType == 'Query' &&
@@ -425,6 +431,8 @@ class DartGenerator {
     final methodBuffer = StringBuffer();
     final helperBuffer = StringBuffer();
     var requestArgsExpression = 'const <String, dynamic>{}';
+    var mutationArgsType = 'NoArgs';
+    var mutationEncodeExpression = 'const <String, dynamic>{}';
     String signature;
 
     if (argsType is ConvexObjectType && argsType.value.isNotEmpty) {
@@ -456,12 +464,16 @@ class DartGenerator {
       requestArgsExpression = argsObject.encode(
         '(${recordAssignments.join(', ')})',
       );
+      mutationArgsType = argsObject.annotation;
+      mutationEncodeExpression = argsObject.encode('args');
       signature = '{${argsFields.join(', ')}}';
     } else if (argsType is ConvexObjectType && argsType.value.isEmpty) {
       signature = '';
     } else if (argsType is ConvexAnyType) {
       signature = '[Map<String, dynamic> args = const <String, dynamic>{}]';
       requestArgsExpression = 'args';
+      mutationArgsType = 'Map<String, dynamic>';
+      mutationEncodeExpression = 'args';
     } else {
       throw StateError(
         'Top-level arguments for ${function.identifier} must be an object or any',
@@ -537,6 +549,24 @@ class DartGenerator {
           'subscription\$, typedStream\$);',
         )
         ..writeln('}');
+    }
+
+    if (function.functionType == 'Mutation') {
+      final mutationResultType =
+          resultType.annotation == 'Null' ? 'void' : resultType.annotation;
+      methodBuffer
+        ..writeln()
+        ..writeln(
+          'ConvexMutationReference<$mutationArgsType, '
+          '$mutationResultType> get ${methodName}Mutation =>',
+        )
+        ..writeln('    ConvexMutationReference(')
+        ..writeln(
+          '      name: ${dartSingleQuotedString(function.convexFunctionName)},',
+        )
+        ..writeln('      encode: (args) => $mutationEncodeExpression,')
+        ..writeln('      decode: (raw) => ${resultType.decode('raw')},')
+        ..writeln('    );');
     }
 
     return _RenderedFunction(

@@ -167,13 +167,17 @@ ConvexQuery<List<Message>>(
 ## Mutation Widget
 
 ```dart
-ConvexMutation<String>(
-  mutation: 'messages:send',
+ConvexMutation<SendArgs, MessagesId>(
+  mutation: api.messages.sendMutation,
   builder: (context, mutate, snapshot) {
     return FilledButton(
       onPressed: snapshot.isLoading
           ? null
-          : () => mutate({'author': 'Flutter User', 'text': 'Hello'}),
+          : () => mutate((
+              author: 'Flutter User',
+              text: 'Hello',
+              attachment: const Optional.absent(),
+            )),
       child: Text(snapshot.isLoading ? 'Sending...' : 'Send'),
     );
   },
@@ -246,8 +250,8 @@ instant the mutation is sent; it rolls back automatically when the mutation
 completes or fails:
 
 ```dart
-ConvexMutation<String>(
-  mutation: 'messages:send',
+ConvexMutation<SendArgs, MessagesId>(
+  mutation: api.messages.sendMutation,
   optimisticUpdate: (store) {
     final existing = store.getQuery('messages:list', const {'channel': 'general'});
     final messages = existing is List ? List<dynamic>.from(existing) : <dynamic>[];
@@ -256,7 +260,11 @@ ConvexMutation<String>(
   },
   builder: (context, mutate, snapshot) {
     return FilledButton(
-      onPressed: () => mutate({'channel': 'general', 'text': 'Hello'}),
+      onPressed: () => mutate((
+        author: 'Flutter User',
+        text: 'Hello',
+        attachment: const Optional.absent(),
+      )),
       child: const Text('Send'),
     );
   },
