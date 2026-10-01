@@ -1236,8 +1236,14 @@ class $widgetName extends StatelessWidget {
                 .mapType(args, suggestedName: '${prefix}Args', context: context)
                 .annotation;
         final assignments = <String>[];
+        final usedWidgetNames = <String>{'key', 'builder', 'client'};
         for (final entry in args.value.entries) {
           final fieldName = _naming.fieldName(entry.key);
+          var widgetFieldName = fieldName;
+          while (usedWidgetNames.contains(widgetFieldName)) {
+            widgetFieldName = 'query${_naming.typeName(widgetFieldName)}';
+          }
+          usedWidgetNames.add(widgetFieldName);
           final mappedField = mapper.mapType(
             entry.value.fieldType,
             suggestedName: '${prefix}Args${_naming.typeName(entry.key)}',
@@ -1248,13 +1254,13 @@ class $widgetName extends StatelessWidget {
               entry.value.optional
                   ? 'Optional<${mappedField.annotation}>'
                   : mappedField.annotation;
-          fields.add('final $fieldType $fieldName;');
+          fields.add('final $fieldType $widgetFieldName;');
           constructorArgs.add(
             entry.value.optional
-                ? 'this.$fieldName = const Optional.absent()'
-                : 'required this.$fieldName',
+                ? 'this.$widgetFieldName = const Optional.absent()'
+                : 'required this.$widgetFieldName',
           );
-          assignments.add('$fieldName: $fieldName');
+          assignments.add('$fieldName: $widgetFieldName');
         }
         argsExpression = '(${assignments.join(', ')})';
       } else if (args is ConvexAnyType) {
