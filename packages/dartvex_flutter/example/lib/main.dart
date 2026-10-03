@@ -185,8 +185,12 @@ class _ExampleHomePageState extends State<ExampleHomePage> {
                   }
                 },
               ),
-              ConvexMutation<String>(
-                mutation: 'messages:send',
+              ConvexMutation<Map<String, dynamic>, String>(
+                mutation: ConvexMutationReference(
+                  name: 'messages:send',
+                  encode: (args) => args,
+                  decode: (raw) => raw as String,
+                ),
                 // Appends the pending message to messages:list instantly; the
                 // overlay is rolled back automatically if the send fails.
                 optimisticUpdate: (store) {
@@ -656,6 +660,13 @@ class DemoRuntimeClient implements ConvexRuntimeClient {
       return;
     }
     emitAuthRefreshing(false);
+  }
+
+  @override
+  OptimisticUpdateHandle createOptimisticUpdate(OptimisticUpdate update) {
+    throw UnsupportedError(
+      'This runtime does not implement optimistic overlays.',
+    );
   }
 
   @override

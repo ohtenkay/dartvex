@@ -55,6 +55,15 @@ class SpecParser {
     return FunctionsSpec(url: url, functions: functions, warnings: warnings);
   }
 
+  /// Parses a decoded Convex validator object.
+  ConvexType parseTypeMap(
+    Map<String, dynamic> map, {
+    String context = '',
+    List<String>? warnings,
+  }) {
+    return _parseType(map, context: context, warnings: warnings ?? <String>[]);
+  }
+
   BaseFunctionSpec _parseBaseFunctionSpec(
     Map<String, dynamic> map,
     List<String> warnings,

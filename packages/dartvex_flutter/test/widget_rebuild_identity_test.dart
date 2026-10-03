@@ -89,11 +89,9 @@ void main() {
       await tester.pumpWidget(build((json) => 'b:${json['id']}'));
 
       expect(client.paginatedQueryCalls, hasLength(1));
-      expect(
-        capturedItems,
-        <String>['b:1'],
-        reason: 'a changed fromJson must re-map already-loaded items',
-      );
+      expect(capturedItems, <String>[
+        'b:1',
+      ], reason: 'a changed fromJson must re-map already-loaded items');
     },
   );
 
@@ -183,16 +181,19 @@ void main() {
       final client = connectedClient();
       client.onMutate = (name, args) async => 'sent';
       ConvexRequestSnapshot<String>? capturedSnapshot;
-      late ConvexRequestExecutor<String> capturedMutate;
+      late Future<String> Function(Map<String, dynamic>) capturedMutate;
 
       Widget build() {
         return Directionality(
           textDirection: TextDirection.ltr,
           child: ConvexProvider(
             client: client,
-            child: ConvexMutation<String>(
-              mutation: 'messages:send',
-              decode: (value) => value as String,
+            child: ConvexMutation<Map<String, dynamic>, String>(
+              mutation: ConvexMutationReference(
+                name: 'messages:send',
+                encode: (args) => args,
+                decode: (value) => value as String,
+              ),
               optimisticUpdate: (store) {},
               builder: (context, mutate, snapshot) {
                 capturedMutate = mutate;
@@ -205,7 +206,7 @@ void main() {
       }
 
       await tester.pumpWidget(build());
-      await capturedMutate();
+      await capturedMutate(const <String, dynamic>{});
       await tester.pump();
       expect(capturedSnapshot?.data, 'sent');
 

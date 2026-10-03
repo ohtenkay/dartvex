@@ -34,6 +34,7 @@ Source and full docs: [github.com/AndreFrelicot/dartvex](https://github.com/Andr
 ## Features
 
 - `ConvexQuery` — reactive query widget with automatic subscription management
+- `ConvexTypedQuery` — reactive query widget using a generated reference, typed data builder, and overridable loading and error UI
 - `ConvexMutation` / `ConvexAction` — request builder widgets, with optional
   optimistic updates on `ConvexMutation`
 - `ConvexImage` — native image display from Convex file storage
@@ -167,13 +168,17 @@ ConvexQuery<List<Message>>(
 ## Mutation Widget
 
 ```dart
-ConvexMutation<String>(
-  mutation: 'messages:send',
+ConvexMutation<SendArgs, MessagesId>(
+  mutation: api.messages.sendMutation,
   builder: (context, mutate, snapshot) {
     return FilledButton(
       onPressed: snapshot.isLoading
           ? null
-          : () => mutate({'author': 'Flutter User', 'text': 'Hello'}),
+          : () => mutate((
+              author: 'Flutter User',
+              text: 'Hello',
+              attachment: const Optional.absent(),
+            )),
       child: Text(snapshot.isLoading ? 'Sending...' : 'Send'),
     );
   },
@@ -246,8 +251,8 @@ instant the mutation is sent; it rolls back automatically when the mutation
 completes or fails:
 
 ```dart
-ConvexMutation<String>(
-  mutation: 'messages:send',
+ConvexMutation<SendArgs, MessagesId>(
+  mutation: api.messages.sendMutation,
   optimisticUpdate: (store) {
     final existing = store.getQuery('messages:list', const {'channel': 'general'});
     final messages = existing is List ? List<dynamic>.from(existing) : <dynamic>[];
@@ -256,12 +261,50 @@ ConvexMutation<String>(
   },
   builder: (context, mutate, snapshot) {
     return FilledButton(
-      onPressed: () => mutate({'channel': 'general', 'text': 'Hello'}),
+      onPressed: () => mutate((
+        author: 'Flutter User',
+        text: 'Hello',
+        attachment: const Optional.absent(),
+      )),
       child: const Text('Send'),
     );
   },
 )
 ```
+
+Mutation widgets reject overlapping calls by default (`MutationMode.single`).
+For replacement writes such as an accent color, use `mode: MutationMode.latest`
+on either `ConvexMutation` or its generated wrapper:
+
+```dart
+UserUpdateAccentColorMutation(
+  mode: MutationMode.latest,
+  optimisticUpdate: updateAccentColorLocally,
+  builder: (context, mutate, snapshot) => /* your selector */,
+)
+```
+
+Latest mode applies each optimistic update immediately, sends one request at a
+time, and replaces any unsent invocation with the newest one. Loading remains
+true until the queue drains; only the final invocation determines the snapshot.
+Use this for setting a value, not inserts, increments, or operations where every
+call must execute. Writes from other clients still follow server commit order.
+
+An unsent, replaced invocation's future fails with `MutationSupersededException`
+without setting a snapshot error. Sent invocations retain their own results or
+errors. Earlier failures do not stop a newer pending invocation; a final failure
+removes the optimistic layer and appears in the snapshot. Changing the widget's
+mutation name, client, or mode, or disposing it, cancels unsent calls with
+`MutationCancelledException` and releases its layer. Sent calls are not cancelled.
+Custom runtime clients must support `createOptimisticUpdate` to use latest mode
+with optimistic updates; the bundled production adapter supports it.
+
+Generated mutation widgets also accept a typed `optimisticUpdate` callback.
+It receives typed mutation arguments, a typed query store, and an invocation
+context whose temporary ID and timestamp stay stable when the update is
+replayed. The query reference checks the argument and result types for
+`getQuery`, `setQuery`, `updateQuery`, and `clearQuery`. The application still
+chooses which queries to update.
 
 ## Connection Status
 

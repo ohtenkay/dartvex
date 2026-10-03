@@ -22,9 +22,22 @@ export 'src/config.dart' show ConvexClientConfig, WebSocketAdapterFactory;
 export 'src/exceptions.dart'
     show ConvexException, ConvexFileUploadException, ConvexStorageException;
 export 'src/logging.dart' show DartvexLogEvent, DartvexLogger, DartvexLogLevel;
+export 'src/mutation.dart' show ConvexMutationReference, NoArgs;
+export 'src/query.dart' show ConvexQueryReference;
 export 'src/storage.dart' show ConvexStorage;
 export 'src/sync/optimistic_updates.dart'
-    show OptimisticLocalStore, OptimisticQueryEntry, OptimisticUpdate;
+    show
+        OptimisticLocalStore,
+        OptimisticQueryEntry,
+        OptimisticUpdate,
+        OptimisticUpdateHandle;
+export 'src/typed_optimistic_update.dart'
+    show
+        OptimisticMutationContext,
+        TypedOptimisticLocalStore,
+        TypedOptimisticQueryEntry,
+        TypedOptimisticUpdate,
+        bindTypedOptimisticUpdate;
 export 'src/sync/paginated_query.dart'
     show
         ConvexPaginatedQuery,

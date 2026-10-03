@@ -3,6 +3,7 @@
 
 import '../runtime.dart';
 import '../schema.dart';
+
 import 'package:dartvex/dartvex.dart';
 
 class KvApi {
@@ -21,6 +22,9 @@ class KvApi {
     return null;
   }
 
+  ConvexMutationReference<LinkArgs, void> get linkMutation =>
+      linkMutationReference;
+
   Future<bool> setValue({
     required String key,
     required String value,
@@ -32,6 +36,9 @@ class KvApi {
     );
     return expectBool(raw$, label: 'SetTypeResult');
   }
+
+  ConvexMutationReference<SetTypeArgs, bool> get setValueMutation =>
+      setValueMutationReference;
 
   Future<Null> watch({required String subscription}) async {
     await _client.query(
@@ -58,6 +65,8 @@ class KvApi {
     });
     return TypedConvexSubscription<Null>(subscription$, typedStream$);
   }
+
+  ConvexQueryReference<WatchArgs, Null> get watchQuery => watchQueryReference;
 }
 
 typedef LinkArgs = ({Optional<UsersId?> target, Optional<List<String>?> tags});
@@ -151,3 +160,26 @@ WatchArgs _decodeWatchArgs(dynamic raw) {
     ),
   );
 }
+
+final ConvexMutationReference<LinkArgs, void> linkMutationReference =
+    ConvexMutationReference(
+      name: 'kv:link',
+      encode: (args) => _encodeLinkArgs(args),
+      decode: (raw) => null,
+    );
+
+final ConvexMutationReference<SetTypeArgs, bool> setValueMutationReference =
+    ConvexMutationReference(
+      name: 'kv:set',
+      encode: (args) => _encodeSetTypeArgs(args),
+      decode: (raw) => expectBool(raw, label: 'SetTypeResult'),
+    );
+
+final ConvexQueryReference<WatchArgs, Null> watchQueryReference =
+    ConvexQueryReference(
+      name: 'kv:watch',
+      encode: (args) => _encodeWatchArgs(args),
+      decodeArgs: (raw) => _decodeWatchArgs(raw),
+      decode: (raw) => null,
+      encodeResult: (value) => null,
+    );

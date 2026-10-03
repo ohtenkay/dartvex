@@ -9,10 +9,19 @@ export 'package:dartvex/dartvex.dart'
         ConnectionStatus,
         ConvexPaginatedResult,
         ConvexPaginationStatus,
+        ConvexMutationReference,
+        ConvexQueryReference,
         ConvexStorageException,
+        NoArgs,
         OptimisticLocalStore,
         OptimisticQueryEntry,
         OptimisticUpdate,
+        OptimisticUpdateHandle,
+        OptimisticMutationContext,
+        TypedOptimisticLocalStore,
+        TypedOptimisticQueryEntry,
+        TypedOptimisticUpdate,
+        bindTypedOptimisticUpdate,
         defaultHttpClientFactory,
         defaultWebSocketAdapterOverride;
 
@@ -46,11 +55,18 @@ export 'src/connection_builder.dart'
 export 'src/connection_indicator.dart'
     show ConvexConnectionIndicator, ConvexConnectionIndicatorBuilder;
 export 'src/connectivity.dart' show ConnectivityPlusSignal;
-export 'src/mutation_builder.dart' show ConvexMutation, ConvexMutationBuilder;
+export 'src/mutation_builder.dart'
+    show
+        ConvexMutation,
+        ConvexMutationBuilder,
+        MutationMode,
+        MutationSupersededException,
+        MutationCancelledException;
 export 'src/paginated_query_builder.dart'
     show PaginatedQueryBuilder, PaginatedQueryWidgetBuilder, PaginationStatus;
 export 'src/provider.dart' show ConvexProvider;
 export 'src/query_builder.dart' show ConvexQuery, ConvexQueryWidgetBuilder;
+export 'src/typed_query_builder.dart' show ConvexTypedQuery;
 export 'src/runtime_client.dart'
     show
         ConvexClientRuntime,

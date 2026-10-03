@@ -37,6 +37,19 @@ void main() {
       expect(output.warnings, anyElement(contains('cannot be represented')));
     });
 
+    test('generated mutation widgets expose and forward latest mode', () async {
+      final output = DartGenerator(generateFlutterWidgets: true).generate(spec);
+      final widgets = output.files['widgets/messages.dart']!;
+      expect(widgets, contains('this.mode = MutationMode.single'));
+      expect(widgets, contains('final MutationMode mode;'));
+      expect(widgets, contains('mode: mode,'));
+      final expected =
+          await File(
+            path.join('test', 'goldens', 'sample', 'widgets', 'messages.dart'),
+          ).readAsString();
+      expect(widgets, expected);
+    });
+
     test('emits the generated header and analyzer suppressions everywhere', () {
       final output = DartGenerator().generate(spec);
 
@@ -122,6 +135,102 @@ void main() {
           "count: expectBigInt(map['count'], label: 'SyncTypeResultCount')",
         ),
       );
+    });
+
+    test('shares schema discriminated unions across endpoint shapes', () {
+      const category = ConvexUnionType(<ConvexType>[
+        ConvexObjectType(<String, ConvexField>{
+          'kind': ConvexField(
+            fieldType: ConvexLiteralType('beer'),
+            optional: false,
+          ),
+        }),
+        ConvexObjectType(<String, ConvexField>{
+          'kind': ConvexField(
+            fieldType: ConvexLiteralType('wine'),
+            optional: false,
+          ),
+        }),
+      ]);
+      final output = DartGenerator(
+        schema: const SchemaSpec(
+          tables: <SchemaTableSpec>[
+            SchemaTableSpec(
+              name: 'drinks',
+              documentType: ConvexObjectType(<String, ConvexField>{
+                'category': ConvexField(fieldType: category, optional: false),
+              }),
+            ),
+          ],
+        ),
+      ).generate(
+        FunctionsSpec(
+          url: 'https://example.com',
+          functions: <BaseFunctionSpec>[
+            _function(
+              identifier: 'drinks.ts:create',
+              args: const ConvexObjectType(<String, ConvexField>{
+                'category': ConvexField(fieldType: category, optional: false),
+              }),
+            ),
+            _function(
+              identifier: 'drinks.ts:get',
+              returns: const ConvexObjectType(<String, ConvexField>{
+                'category': ConvexField(fieldType: category, optional: false),
+              }),
+            ),
+          ],
+        ),
+      );
+
+      expect(output.files, contains('types.dart'));
+      expect(output.files['types.dart'], contains('sealed class Category'));
+      expect(output.files['types.dart'], contains('final class Beer'));
+      expect(output.files['api.dart'], contains("export 'types.dart';"));
+      final drinks = output.files['modules/drinks.dart']!;
+      expect(drinks, contains("import '../types.dart';"));
+      expect(drinks, contains('required Category category'));
+      expect(drinks, contains('Category category'));
+      expect(drinks, isNot(contains('CreateArgsCategory')));
+      expect(drinks, isNot(contains('GetResultCategory')));
+    });
+
+    test('emits ID wrappers referenced only by shared schema types', () {
+      const target = ConvexUnionType(<ConvexType>[
+        ConvexObjectType(<String, ConvexField>{
+          'kind': ConvexField(
+            fieldType: ConvexLiteralType('user'),
+            optional: false,
+          ),
+          'id': ConvexField(fieldType: ConvexIdType('users'), optional: false),
+        }),
+        ConvexObjectType(<String, ConvexField>{
+          'kind': ConvexField(
+            fieldType: ConvexLiteralType('team'),
+            optional: false,
+          ),
+          'id': ConvexField(fieldType: ConvexIdType('teams'), optional: false),
+        }),
+      ]);
+      final output = DartGenerator(
+        schema: const SchemaSpec(
+          tables: <SchemaTableSpec>[
+            SchemaTableSpec(
+              name: 'events',
+              documentType: ConvexObjectType(<String, ConvexField>{
+                'target': ConvexField(fieldType: target, optional: false),
+              }),
+            ),
+          ],
+        ),
+      ).generate(
+        FunctionsSpec(url: 'https://example.com', functions: const []),
+      );
+
+      expect(output.files['types.dart'], contains('UsersId id'));
+      expect(output.files['types.dart'], contains('TeamsId id'));
+      expect(output.files['schema.dart'], contains('class UsersId'));
+      expect(output.files['schema.dart'], contains('class TeamsId'));
     });
 
     test('throws when function names generate duplicate methods', () {
@@ -480,11 +589,12 @@ class _InvalidMethodNaming extends Naming {
 FunctionSpec _function({
   required String identifier,
   String functionType = 'Mutation',
+  ConvexType args = const ConvexObjectType(<String, ConvexField>{}),
   ConvexType returns = const ConvexStringType(),
 }) {
   return FunctionSpec(
     functionType: functionType,
-    args: const ConvexObjectType(<String, ConvexField>{}),
+    args: args,
     returns: returns,
     identifier: identifier,
     visibility: const Visibility('public'),
