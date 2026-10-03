@@ -1188,7 +1188,7 @@ class $executorName {
 /// Flutter widget for ${function.convexFunctionName}.
 class $widgetName extends StatelessWidget {
   /// Creates a typed mutation widget.
-  const $widgetName({super.key, required this.builder, this.client, this.optimisticUpdate});
+  const $widgetName({super.key, required this.builder, this.client, this.optimisticUpdate, this.mode = MutationMode.single});
 
   /// Builds the UI with the callable mutation and current request state.
   final Widget Function(BuildContext, $executorName, ConvexRequestSnapshot<$resultType>) builder;
@@ -1199,11 +1199,15 @@ class $widgetName extends StatelessWidget {
   /// Optional optimistic update for the mutation.
   final TypedOptimisticUpdate<$argsType>? optimisticUpdate;
 
+  /// Whether overlapping calls are rejected or coalesced to the latest value.
+  final MutationMode mode;
+
   @override
   Widget build(BuildContext context) => ConvexMutation<$argsType, $resultType>(
     mutation: ${methodName}MutationReference,
     client: client,
     typedOptimisticUpdate: optimisticUpdate,
+    mode: mode,
     builder: (context, mutate, snapshot) => builder(
       context,
       $executorName(mutate),

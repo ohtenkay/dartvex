@@ -32,6 +32,32 @@ void main() {
       return result is StoredQuerySuccess ? result.value : null;
     }
 
+    test('standalone replacement replays, drops independently and is atomic',
+        () {
+      final results = OptimisticQueryResults();
+      final tok = token('query');
+      Map<String, OverlayServerQuery> server(String value) => {
+            tok: serverQuery('query', value),
+          };
+      results.ingestQueryResultsFromServer(server('original'), {});
+      void select(OptimisticLocalStore store) =>
+          store.setQuery('query', {}, 'latest');
+      results.replaceOptimisticUpdate(select, -1, server('original'));
+      results.ingestQueryResultsFromServer(server('intermediate'), {10});
+      expect(valueAt(results, tok), 'latest');
+      expect(results.hasOptimisticUpdateForToken(tok), isTrue);
+      expect(
+          () => results.replaceOptimisticUpdate((store) {
+                store.setQuery('query', {}, 'broken');
+                throw StateError('bad update');
+              }, -1, server('intermediate')),
+          throwsStateError);
+      expect(valueAt(results, tok), 'latest');
+      results.ingestQueryResultsFromServer(server('final'), {-1});
+      expect(valueAt(results, tok), 'final');
+      expect(results.hasActiveUpdates, isFalse);
+    });
+
     test('server results are returned back if no optimistic updates exist', () {
       final results = OptimisticQueryResults();
       final changed = results.ingestQueryResultsFromServer(

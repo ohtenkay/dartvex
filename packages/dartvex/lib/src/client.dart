@@ -408,6 +408,7 @@ class ConvexClient implements ConvexFunctionCaller, DartvexLogSource {
   Future<void>? _startFuture;
   Future<void>? _closeFuture;
   bool _disposed = false;
+  int _nextOptimisticId = -1;
 
   static String _normalizeDeploymentUrl(String deploymentUrl) {
     final uri = Uri.tryParse(deploymentUrl);
@@ -827,6 +828,26 @@ class ConvexClient implements ConvexFunctionCaller, DartvexLogSource {
       name: name,
       args: args,
       pageSize: pageSize,
+    );
+  }
+
+  /// Applies a local optimistic layer that can be replaced before a queued
+  /// mutation is sent. Dispose it after server confirmation or abandonment.
+  OptimisticUpdateHandle createOptimisticUpdate(OptimisticUpdate update) {
+    _assertNotDisposed();
+    final id = _nextOptimisticId--;
+    _dispatchOptimisticEvents(_baseClient.replaceOptimisticUpdate(update, id));
+    return OptimisticUpdateHandle(
+      onReplace: (next) {
+        _assertNotDisposed();
+        _dispatchOptimisticEvents(
+            _baseClient.replaceOptimisticUpdate(next, id));
+      },
+      onDispose: () {
+        if (!_disposed) {
+          _dispatchOptimisticEvents(_baseClient.removeOptimisticUpdate(id));
+        }
+      },
     );
   }
 

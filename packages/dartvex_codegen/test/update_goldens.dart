@@ -16,6 +16,15 @@ void main() async {
   final spec = const SpecParser().parseString(fixture);
   final output = DartGenerator().generate(spec);
 
+  final widgetOutput = DartGenerator(
+    generateFlutterWidgets: true,
+  ).generate(spec);
+  final widgetFile = File(
+    path.join('test', 'goldens', 'sample', 'widgets', 'messages.dart'),
+  );
+  await widgetFile.parent.create(recursive: true);
+  await widgetFile.writeAsString(widgetOutput.files['widgets/messages.dart']!);
+
   for (final entry in output.files.entries) {
     final file = File(path.join('test', 'goldens', 'sample', entry.key));
     await file.parent.create(recursive: true);

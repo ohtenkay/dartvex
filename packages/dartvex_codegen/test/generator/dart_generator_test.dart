@@ -37,6 +37,19 @@ void main() {
       expect(output.warnings, anyElement(contains('cannot be represented')));
     });
 
+    test('generated mutation widgets expose and forward latest mode', () async {
+      final output = DartGenerator(generateFlutterWidgets: true).generate(spec);
+      final widgets = output.files['widgets/messages.dart']!;
+      expect(widgets, contains('this.mode = MutationMode.single'));
+      expect(widgets, contains('final MutationMode mode;'));
+      expect(widgets, contains('mode: mode,'));
+      final expected =
+          await File(
+            path.join('test', 'goldens', 'sample', 'widgets', 'messages.dart'),
+          ).readAsString();
+      expect(widgets, expected);
+    });
+
     test('emits the generated header and analyzer suppressions everywhere', () {
       final output = DartGenerator().generate(spec);
 

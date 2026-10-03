@@ -26,7 +26,11 @@ export 'src/mutation.dart' show ConvexMutationReference, NoArgs;
 export 'src/query.dart' show ConvexQueryReference;
 export 'src/storage.dart' show ConvexStorage;
 export 'src/sync/optimistic_updates.dart'
-    show OptimisticLocalStore, OptimisticQueryEntry, OptimisticUpdate;
+    show
+        OptimisticLocalStore,
+        OptimisticQueryEntry,
+        OptimisticUpdate,
+        OptimisticUpdateHandle;
 export 'src/typed_optimistic_update.dart'
     show
         OptimisticMutationContext,

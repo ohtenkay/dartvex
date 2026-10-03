@@ -2,6 +2,35 @@ import '../values/json_codec.dart';
 import 'local_state.dart';
 import 'remote_query_set.dart';
 
+/// A replaceable optimistic layer independent of a network request.
+///
+/// Call [dispose] when the owning operation is confirmed or abandoned.
+final class OptimisticUpdateHandle {
+  /// Creates a handle backed by an optimistic store.
+  OptimisticUpdateHandle({
+    required void Function(OptimisticUpdate) onReplace,
+    required void Function() onDispose,
+  })  : _onReplace = onReplace,
+        _onDispose = onDispose;
+
+  final void Function(OptimisticUpdate) _onReplace;
+  final void Function() _onDispose;
+  bool _disposed = false;
+
+  /// Atomically replaces this layer and immediately notifies subscribers.
+  void replace(OptimisticUpdate update) {
+    if (_disposed) throw StateError('Optimistic update has been disposed.');
+    _onReplace(update);
+  }
+
+  /// Removes the layer. Repeated calls are harmless.
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _onDispose();
+  }
+}
+
 /// A view of the query results currently in the client, for use within an
 /// [OptimisticUpdate].
 ///
@@ -266,6 +295,31 @@ class OptimisticQueryResults {
     _optimisticUpdates.add((update: update, mutationId: mutationId));
     _optimisticTokens.addAll(store.modifiedQueries);
     return store.modifiedQueries;
+  }
+
+  /// Atomically replaces a standalone layer, rebasing it on server results.
+  /// Negative ids are reserved for standalone layers, outside request ids.
+  List<String> replaceOptimisticUpdate(
+    OptimisticUpdate update,
+    int id,
+    Map<String, OverlayServerQuery> serverResults,
+  ) {
+    final oldUpdates = List.of(_optimisticUpdates);
+    final oldResults = _queryResults;
+    final oldTokens = Set.of(_optimisticTokens);
+    try {
+      final changed = ingestQueryResultsFromServer(serverResults, {id});
+      return {...changed, ...applyOptimisticUpdate(update, id)}.toList();
+    } catch (_) {
+      _optimisticUpdates
+        ..clear()
+        ..addAll(oldUpdates);
+      _queryResults = oldResults;
+      _optimisticTokens
+        ..clear()
+        ..addAll(oldTokens);
+      rethrow;
+    }
   }
 
   /// The overlaid (server + optimistic) result for [token], including errors,

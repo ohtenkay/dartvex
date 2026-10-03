@@ -6,6 +6,7 @@ import 'package:dartvex/dartvex.dart'
         ConvexPaginatedResult,
         ConvexPaginationStatus,
         OptimisticUpdate,
+        OptimisticUpdateHandle,
         convexToJson,
         jsonToConvex;
 
@@ -275,6 +276,13 @@ class FakeConvexClient implements ConvexRuntimeClient {
         .putIfAbsent(name, () => <FakeConvexPaginatedQuery>[])
         .add(query);
     return query;
+  }
+
+  @override
+  OptimisticUpdateHandle createOptimisticUpdate(OptimisticUpdate update) {
+    throw UnsupportedError(
+      'This runtime does not implement optimistic overlays.',
+    );
   }
 
   @override
