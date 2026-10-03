@@ -272,6 +272,33 @@ ConvexMutation<SendArgs, MessagesId>(
 )
 ```
 
+Mutation widgets reject overlapping calls by default (`MutationMode.single`).
+For replacement writes such as an accent color, use `mode: MutationMode.latest`
+on either `ConvexMutation` or its generated wrapper:
+
+```dart
+UserUpdateAccentColorMutation(
+  mode: MutationMode.latest,
+  optimisticUpdate: updateAccentColorLocally,
+  builder: (context, mutate, snapshot) => /* your selector */,
+)
+```
+
+Latest mode applies each optimistic update immediately, sends one request at a
+time, and replaces any unsent invocation with the newest one. Loading remains
+true until the queue drains; only the final invocation determines the snapshot.
+Use this for setting a value, not inserts, increments, or operations where every
+call must execute. Writes from other clients still follow server commit order.
+
+An unsent, replaced invocation's future fails with `MutationSupersededException`
+without setting a snapshot error. Sent invocations retain their own results or
+errors. Earlier failures do not stop a newer pending invocation; a final failure
+removes the optimistic layer and appears in the snapshot. Changing the widget's
+mutation name, client, or mode, or disposing it, cancels unsent calls with
+`MutationCancelledException` and releases its layer. Sent calls are not cancelled.
+Custom runtime clients must support `createOptimisticUpdate` to use latest mode
+with optimistic updates; the bundled production adapter supports it.
+
 Generated mutation widgets also accept a typed `optimisticUpdate` callback.
 It receives typed mutation arguments, a typed query store, and an invocation
 context whose temporary ID and timestamp stay stable when the update is

@@ -317,6 +317,18 @@ class BaseClient {
     );
   }
 
+  /// Replaces a standalone optimistic layer without sending a mutation.
+  List<BaseClientEvent> replaceOptimisticUpdate(
+      OptimisticUpdate update, int id) {
+    return _eventsForChangedTokens(
+      _optimistic.replaceOptimisticUpdate(update, id, _buildServerResults()),
+    );
+  }
+
+  /// Removes a standalone optimistic layer.
+  List<BaseClientEvent> removeOptimisticUpdate(int id) =>
+      _emitOverlayChanges([id]);
+
   /// Enqueues an [Action] for [udfPath] with [args] and returns a
   /// [TrackedRequest] whose future resolves with the server response.
   ///

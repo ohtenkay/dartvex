@@ -24,6 +24,76 @@ void main() {
     });
 
     test(
+      'standalone handles publish replacements and survive server updates',
+      () async {
+        final adapter = _MockWebSocketAdapter();
+        final client = convex.ConvexClient(
+          'https://example.com',
+          config: convex.ConvexClientConfig(adapterFactory: (_) => adapter),
+        );
+        final runtime = ConvexClientRuntime(client);
+        await _settle();
+        final subscription = runtime.subscribe('user:current');
+        final events = <ConvexRuntimeQueryEvent>[];
+        final listener = subscription.stream.listen(events.add);
+        await _settle();
+        final querySet = adapter.decodedSentMessages
+            .where((message) => message['type'] == 'ModifyQuerySet')
+            .last;
+        final queryId =
+            ((querySet['modifications'] as List<dynamic>).single
+                    as Map<String, dynamic>)['queryId']
+                as int;
+        final handle = runtime.createOptimisticUpdate((store) {
+          store.setQuery('user:current', {}, 'A');
+        });
+        await _settle();
+        expect((events.last as ConvexRuntimeQuerySuccess).value, 'A');
+        handle.replace((store) => store.setQuery('user:current', {}, 'C'));
+        await _settle();
+        expect((events.last as ConvexRuntimeQuerySuccess).value, 'C');
+        adapter.pushServerMessage({
+          'type': 'Transition',
+          'startVersion': _version(querySet: 0, ts: 'AAAAAAAAAAA='),
+          'endVersion': _version(querySet: 1, ts: 'AQAAAAAAAAA='),
+          'modifications': [
+            {
+              'type': 'QueryUpdated',
+              'queryId': queryId,
+              'value': 'server',
+              'logLines': <String>[],
+            },
+          ],
+        });
+        await _settle();
+        expect((events.last as ConvexRuntimeQuerySuccess).value, 'C');
+        expect(
+          (events.last as ConvexRuntimeQuerySuccess).hasPendingWrites,
+          isTrue,
+        );
+        expect(
+          adapter.decodedSentMessages.where(
+            (message) => message['type'] == 'Mutation',
+          ),
+          isEmpty,
+        );
+        handle.dispose();
+        handle.dispose();
+        await _settle();
+        expect((events.last as ConvexRuntimeQuerySuccess).value, 'server');
+        expect(
+          (events.last as ConvexRuntimeQuerySuccess).hasPendingWrites,
+          isFalse,
+        );
+        expect(() => handle.replace((_) {}), throwsStateError);
+        await listener.cancel();
+        subscription.cancel();
+        runtime.dispose();
+        client.dispose();
+      },
+    );
+
+    test(
       'maps optimistic core query events to pending runtime snapshots',
       () async {
         final adapter = _MockWebSocketAdapter();

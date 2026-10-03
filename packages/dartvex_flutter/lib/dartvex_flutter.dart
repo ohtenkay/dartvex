@@ -16,6 +16,7 @@ export 'package:dartvex/dartvex.dart'
         OptimisticLocalStore,
         OptimisticQueryEntry,
         OptimisticUpdate,
+        OptimisticUpdateHandle,
         OptimisticMutationContext,
         TypedOptimisticLocalStore,
         TypedOptimisticQueryEntry,
@@ -54,7 +55,13 @@ export 'src/connection_builder.dart'
 export 'src/connection_indicator.dart'
     show ConvexConnectionIndicator, ConvexConnectionIndicatorBuilder;
 export 'src/connectivity.dart' show ConnectivityPlusSignal;
-export 'src/mutation_builder.dart' show ConvexMutation, ConvexMutationBuilder;
+export 'src/mutation_builder.dart'
+    show
+        ConvexMutation,
+        ConvexMutationBuilder,
+        MutationMode,
+        MutationSupersededException,
+        MutationCancelledException;
 export 'src/paginated_query_builder.dart'
     show PaginatedQueryBuilder, PaginatedQueryWidgetBuilder, PaginationStatus;
 export 'src/provider.dart' show ConvexProvider;
