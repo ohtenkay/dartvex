@@ -147,7 +147,24 @@ await authClient.signOut(sessionToken: session.sessionToken);
 await secureStorage.delete(key: 'session_token');
 ```
 
-### 6. Password recovery and magic links
+### 6. Change password
+
+```dart
+await authClient.changePassword(
+  sessionToken: session.sessionToken,
+  currentPassword: 'securePassword',
+  newPassword: 'newSecurePassword',
+);
+// If using a provider, also update its credentials after success.
+provider.password = 'newSecurePassword';
+```
+
+Existing sessions remain signed in by default. Set `revokeOtherSessions: true`
+to revoke existing sessions and receive a replacement session token. Persist
+that token and restore authentication with a new provider seeded through
+`initialSessionToken`; the previous token is no longer valid.
+
+### 7. Password recovery and magic links
 
 ```dart
 await authClient.forgotPassword(
@@ -176,6 +193,7 @@ final session = await authClient.verifyMagicLink(token: magicLinkToken);
 - `signIn({email, password})` — authenticate, returns `BetterAuthSession`
 - `forgotPassword({email, redirectTo?})` — send password reset email
 - `resetPassword({token, newPassword})` — confirm password reset
+- `changePassword({sessionToken, currentPassword, newPassword, revokeOtherSessions?})` — change password; returns a replacement session token when revoking sessions
 - `sendMagicLink({email, callbackURL?})` — send passwordless sign-in link
 - `verifyMagicLink({token})` — exchange magic link token for a session
 - `signOut({sessionToken})` — end session
