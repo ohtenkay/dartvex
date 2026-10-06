@@ -5,6 +5,7 @@
 import '../api.dart';
 import '../modules/messages.dart';
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:dartvex_flutter/dartvex_flutter.dart';
@@ -23,6 +24,24 @@ class MessagesSendMutationExecutor {
     required String text,
     Optional<Uint8List> attachment = const Optional.absent(),
   }) => _mutate((author: author, text: text, attachment: attachment));
+
+  /// Starts the mutation, observing failures through the widget snapshot.
+  ///
+  /// [onSuccess] runs only on success. Errors from that callback are not
+  /// suppressed. Use [call] when you need to await the result or handle errors.
+  void run({
+    required String author,
+    required String text,
+    Optional<Uint8List> attachment = const Optional.absent(),
+    void Function(MessagesId result)? onSuccess,
+  }) {
+    unawaited(
+      _mutate((author: author, text: text, attachment: attachment))
+          .then<void>((result) {
+            onSuccess?.call(result);
+          }, onError: (Object error, StackTrace stackTrace) {}),
+    );
+  }
 }
 
 /// Flutter widget for messages:send.

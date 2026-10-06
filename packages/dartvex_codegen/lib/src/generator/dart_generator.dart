@@ -1104,6 +1104,7 @@ String describeType(dynamic value) {
         node.pathSegments.isEmpty ? 'api.dart' : _moduleFilePath(node);
     final imports =
         ImportManager()
+          ..add('dart:async')
           ..add('package:flutter/widgets.dart')
           ..add('package:dartvex_flutter/dartvex_flutter.dart')
           ..add(
@@ -1173,6 +1174,21 @@ String describeType(dynamic value) {
             '[Map<String, dynamic> args = const <String, dynamic>{}]';
         argsExpression = 'args';
       }
+      final runFields = <String>[];
+      final argumentNames = <String>{};
+      if (args is ConvexObjectType && args.value.isNotEmpty) {
+        runFields.add(callSignature.substring(1, callSignature.length - 1));
+        argumentNames.addAll(args.value.keys.map(_naming.fieldName));
+      } else if (args is ConvexAnyType) {
+        runFields.add('Map<String, dynamic> args = const <String, dynamic>{}');
+        argumentNames.add('args');
+      }
+      var successName = 'onSuccess';
+      while (argumentNames.contains(successName)) {
+        successName = '${successName}Callback';
+      }
+      runFields.add('void Function($resultType result)? $successName');
+      final runSignature = '{${runFields.join(', ')}}';
       declarations.add('''
 /// Callable typed mutation for ${function.convexFunctionName}.
 class $executorName {
@@ -1183,6 +1199,17 @@ class $executorName {
 
   /// Runs the mutation.
   Future<$resultType> call($callSignature) => _mutate($argsExpression);
+
+  /// Starts the mutation, observing failures through the widget snapshot.
+  ///
+  /// [$successName] runs only on success. Errors from that callback are not
+  /// suppressed. Use [call] when you need to await the result or handle errors.
+  void run($runSignature) {
+    unawaited(_mutate($argsExpression).then<void>(
+      (result) { $successName?.call(result); },
+      onError: (Object error, StackTrace stackTrace) {},
+    ));
+  }
 }
 
 /// Flutter widget for ${function.convexFunctionName}.

@@ -272,6 +272,24 @@ ConvexMutation<SendArgs, MessagesId>(
 )
 ```
 
+Generated mutation executors also offer `run(...)` for UI callbacks. It returns
+`void`, exposes mutation failures through `snapshot.error`, and optionally runs
+`onSuccess` with the result:
+
+```dart
+builder: (context, mutate, snapshot) => FilledButton(
+  onPressed: snapshot.isLoading ? null : () => mutate.run(
+    author: 'Flutter User',
+    text: 'Hello',
+    onSuccess: (id) => Navigator.of(context).pop(id),
+  ),
+  child: const Text('Send'),
+),
+```
+
+Use `await mutate(...)` when you need the result or want to catch mutation errors.
+`run` does not suppress errors thrown by your success callback.
+
 Mutation widgets reject overlapping calls by default (`MutationMode.single`).
 For replacement writes such as an accent color, use `mode: MutationMode.latest`
 on either `ConvexMutation` or its generated wrapper:
