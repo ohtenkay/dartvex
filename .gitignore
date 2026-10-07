@@ -5,6 +5,7 @@ build/
 pubspec.lock
 
 # IDE
+.devenv/
 .idea/
 *.iml
 .vscode/
