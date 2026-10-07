@@ -658,7 +658,7 @@ class ConvexLocalClient {
 
     try {
       final value = await _remoteClient.query(descriptor.name, descriptor.args);
-      return _writeRemoteSnapshotAndRebasePending(descriptor, value);
+      return await _writeRemoteSnapshotAndRebasePending(descriptor, value);
     } on ConvexException catch (error) {
       if (!error.retryable) {
         rethrow;

@@ -79,7 +79,10 @@ dependencies:
   dartvex_flutter: ^0.2.0
 ```
 
-Requires Dart `^3.8.0` and Flutter `>=3.32.0`.
+Requires Dart `^3.10.0` and Flutter `>=3.38.0`. Native transports require
+iOS 15 or macOS 12, built with Xcode `>=26.1.1`.
+Android requires Android Gradle Plugin `>=8.12.1`,
+Gradle `>=8.13`, and Kotlin `>=2.2.0`.
 
 ## Platform Transports
 

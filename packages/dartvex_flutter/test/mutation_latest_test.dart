@@ -89,7 +89,7 @@ void main() {
   setUp(() {
     client = _OverlayRuntime()..receive('original');
     requests = [];
-    client.onMutate = (_, __) {
+    client.onMutate = (_, _) {
       final request = Completer<dynamic>();
       requests.add(request);
       return request.future;

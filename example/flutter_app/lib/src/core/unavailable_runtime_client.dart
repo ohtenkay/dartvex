@@ -48,6 +48,10 @@ class UnavailableRuntimeClient implements ConvexRuntimeClient {
   }
 
   @override
+  OptimisticUpdateHandle createOptimisticUpdate(OptimisticUpdate update) =>
+      throw _error();
+
+  @override
   Future<dynamic> mutate(
     String name, [
     Map<String, dynamic> args = const <String, dynamic>{},

@@ -299,6 +299,11 @@ class _FixedRuntimeClient implements ConvexRuntimeClient {
   }) => throw UnimplementedError();
 
   @override
+  convex.OptimisticUpdateHandle createOptimisticUpdate(
+    convex.OptimisticUpdate update,
+  ) => throw UnimplementedError();
+
+  @override
   Future<dynamic> mutate(
     String name, [
     Map<String, dynamic> args = const <String, dynamic>{},

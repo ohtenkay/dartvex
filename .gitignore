@@ -16,6 +16,8 @@ pubspec.lock
 # Generated
 *.g.dart
 .flutter-plugins-dependencies
+/local.properties
+/.android/
 
 # Local dependency overrides
 pubspec_overrides.yaml
