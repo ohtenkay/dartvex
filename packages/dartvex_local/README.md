@@ -8,6 +8,20 @@
 
 Offline-capable extension for [dartvex](https://pub.dev/packages/dartvex) — the pure Dart client for [Convex](https://convex.dev). SQLite query cache and mutation queue with optimistic updates.
 
+## Fork additions
+
+This package is part of [ohtenkay/dartvex](https://github.com/ohtenkay/dartvex),
+a fork of [AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
+
+This package has no fork-specific changes on this branch. Durable optimistic
+mutation work lives on the separate `optimistic-behavior-improvements` branch
+and is not included here.
+
+The pub.dev installation examples below refer to upstream releases. Use this
+checkout or Git dependencies pinned to a fork commit for fork additions, keeping
+related Dartvex packages on the same revision. See the
+[root fork overview](../../README.md#fork-additions).
+
 <p align="center">
   <a href="https://github.com/AndreFrelicot/dartvex">
     <img src="https://raw.githubusercontent.com/AndreFrelicot/dartvex/main/assets/dartvex-poster.webp" width="900" alt="Dartvex Flutter demo — real-time chats running on iOS and macOS" />
@@ -24,7 +38,8 @@ Offline-capable extension for [dartvex](https://pub.dev/packages/dartvex) — th
 | **[`dartvex_local`](https://pub.dev/packages/dartvex_local)** | Offline support — SQLite cache, mutation queue |
 | [`dartvex_auth_better`](https://pub.dev/packages/dartvex_auth_better) | Better Auth adapter |
 
-Source and full docs: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex)
+Fork source and docs: [github.com/ohtenkay/dartvex](https://github.com/ohtenkay/dartvex).
+Upstream: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
 
 ## What it does
 

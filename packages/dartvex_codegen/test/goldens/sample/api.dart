@@ -6,6 +6,7 @@ import './modules/kv.dart';
 import './modules/messages.dart';
 import './runtime.dart';
 import './schema.dart';
+
 import 'package:dartvex/dartvex.dart';
 
 export 'runtime.dart';
@@ -48,6 +49,9 @@ class ConvexApi {
     });
     return TypedConvexSubscription<HealthResult>(subscription$, typedStream$);
   }
+
+  ConvexQueryReference<NoArgs, HealthResult> get healthQuery =>
+      healthQueryReference;
 }
 
 typedef HealthResult = ({bool ok});
@@ -64,3 +68,12 @@ HealthResult _decodeHealthResult(dynamic raw) {
   }
   return (ok: expectBool(map['ok'], label: 'HealthResultOk'));
 }
+
+final ConvexQueryReference<NoArgs, HealthResult> healthQueryReference =
+    ConvexQueryReference(
+      name: 'index:health',
+      encode: (args) => const <String, dynamic>{},
+      decodeArgs: (raw) => const NoArgs(),
+      decode: (raw) => _decodeHealthResult(raw),
+      encodeResult: (value) => _encodeHealthResult(value),
+    );

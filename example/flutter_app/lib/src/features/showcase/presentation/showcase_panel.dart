@@ -182,10 +182,12 @@ class _OptimisticDemoCardState extends State<_OptimisticDemoCard> {
             onChanged: (value) => setState(() => _failNext = value),
           ),
           const SizedBox(height: 4),
-          ConvexMutation<dynamic>(
-            mutation: _failNext
-                ? 'messages:failingSend'
-                : 'messages:sendPublic',
+          ConvexMutation<Map<String, dynamic>, dynamic>(
+            mutation: ConvexMutationReference(
+              name: _failNext ? 'messages:failingSend' : 'messages:sendPublic',
+              encode: (args) => args,
+              decode: (raw) => raw,
+            ),
             optimisticUpdate: (store) {
               final existing =
                   (store.getQuery('messages:listPublic') as List<dynamic>?) ??

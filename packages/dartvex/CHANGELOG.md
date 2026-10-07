@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (fork)
+
+- Typed query and mutation references with wire codecs, plus `NoArgs` for
+  zero-argument functions.
+- `TypedOptimisticLocalStore`, typed optimistic callbacks, and invocation
+  contexts with temporary IDs/timestamps that remain stable during replay.
+- `ConvexClient.createOptimisticUpdate()` and `OptimisticUpdateHandle` for
+  creating, replacing, and disposing local layers independently of requests.
+  These layers support queued latest-value mutations; they are not persisted.
+
 ## [0.2.0] - 2026-06-12
 
 ### Added

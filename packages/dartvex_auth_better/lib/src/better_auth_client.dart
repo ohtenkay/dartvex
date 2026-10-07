@@ -15,10 +15,8 @@ class BetterAuthClient {
   /// Creates a [BetterAuthClient] for the given Convex [baseUrl].
   ///
   /// Optionally provide a custom [httpClient] for testing or proxy use.
-  BetterAuthClient({
-    required String baseUrl,
-    http.Client? httpClient,
-  })  : baseUrl = _normalizeBaseUrl(baseUrl),
+  BetterAuthClient({required String baseUrl, http.Client? httpClient})
+      : baseUrl = _normalizeBaseUrl(baseUrl),
         _http = httpClient ?? createDefaultHttpClient(),
         _ownsHttp = httpClient == null;
 
@@ -126,6 +124,34 @@ class BetterAuthClient {
     });
   }
 
+  /// Changes the password of an authenticated user.
+  ///
+  /// Authenticate with [sessionToken] (the Better Auth session token, not the
+  /// Convex JWT). Existing sessions remain valid by default.
+  ///
+  /// When [revokeOtherSessions] is true, Better Auth revokes existing sessions
+  /// and creates a replacement. The returned token must be persisted and used
+  /// to restore authentication, for example with a new provider's
+  /// `initialSessionToken`. Otherwise returns `null` and keeps the current token.
+  Future<String?> changePassword({
+    required String sessionToken,
+    required String currentPassword,
+    required String newPassword,
+    bool revokeOtherSessions = false,
+  }) async {
+    const path = '/api/auth/change-password';
+    final response = await _post(
+        path,
+        {
+          'currentPassword': currentPassword,
+          'newPassword': newPassword,
+          'revokeOtherSessions': revokeOtherSessions,
+        },
+        bearerToken: sessionToken);
+    final body = _decodeObjectBody(path, response);
+    return revokeOtherSessions ? _extractSessionToken(response, body) : null;
+  }
+
   /// Sends a magic link email.
   Future<void> sendMagicLink({
     required String email,
@@ -138,12 +164,9 @@ class BetterAuthClient {
   }
 
   /// Verifies a magic link token and returns a session.
-  Future<BetterAuthSession> verifyMagicLink({
-    required String token,
-  }) async {
-    final uri = Uri.parse('$_siteUrl/api/auth/magic-link/verify').replace(
-      queryParameters: {'token': token},
-    );
+  Future<BetterAuthSession> verifyMagicLink({required String token}) async {
+    final uri = Uri.parse('$_siteUrl/api/auth/magic-link/verify')
+        .replace(queryParameters: {'token': token});
     final response = await _http.get(uri);
 
     if (response.statusCode != 200) {
@@ -161,10 +184,7 @@ class BetterAuthClient {
       );
     }
 
-    final body = _decodeObjectBody(
-      '/api/auth/magic-link/verify',
-      response,
-    );
+    final body = _decodeObjectBody('/api/auth/magic-link/verify', response);
     final user = _asObject(body['user']);
     final sessionToken = _extractSessionToken(response, body);
 
@@ -191,24 +211,19 @@ class BetterAuthClient {
 
   /// Signs out the current session.
   Future<void> signOut({required String sessionToken}) async {
-    await _post(
-      '/api/auth/sign-out',
-      {},
-      bearerToken: sessionToken,
-    );
+    await _post('/api/auth/sign-out', {}, bearerToken: sessionToken);
   }
 
   /// Gets the current session, or `null` if not authenticated.
-  Future<BetterAuthSession?> getSession({
-    required String sessionToken,
-  }) async {
+  Future<BetterAuthSession?> getSession({required String sessionToken}) async {
     final uri = Uri.parse('$_siteUrl/api/auth/get-session');
 
     // Use Bearer auth (requires the `bearer()` plugin on the server).
     // This is the official approach for mobile/API clients without cookies.
-    final response = await _http.get(uri, headers: {
-      'Authorization': 'Bearer $sessionToken',
-    });
+    final response = await _http.get(
+      uri,
+      headers: {'Authorization': 'Bearer $sessionToken'},
+    );
 
     if (response.statusCode == 401 || response.statusCode == 403) {
       return null;
@@ -252,10 +267,7 @@ class BetterAuthClient {
     final sessionToken = _extractSessionToken(response, body);
 
     // Try the Convex JWT from cookies first (avoids a second round-trip).
-    final cookieJwt = _extractCookieValue(
-      response,
-      'better-auth.convex_jwt',
-    );
+    final cookieJwt = _extractCookieValue(response, 'better-auth.convex_jwt');
     if (cookieJwt != null) {
       return BetterAuthSession(
         token: cookieJwt,
@@ -281,9 +293,10 @@ class BetterAuthClient {
   /// Fetches the Convex JWT from the Better Auth `/convex/token` endpoint.
   Future<String> _fetchConvexToken(String sessionToken) async {
     final uri = Uri.parse('$_siteUrl/api/auth/convex/token');
-    final response = await _http.get(uri, headers: {
-      'Authorization': 'Bearer $sessionToken',
-    });
+    final response = await _http.get(
+      uri,
+      headers: {'Authorization': 'Bearer $sessionToken'},
+    );
 
     if (response.statusCode == 401 || response.statusCode == 403) {
       throw BetterAuthSessionExpiredException(

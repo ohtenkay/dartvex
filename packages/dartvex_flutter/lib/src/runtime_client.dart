@@ -44,6 +44,11 @@ abstract class ConvexRuntimeClient {
     convex.OptimisticUpdate? optimisticUpdate,
   ]);
 
+  /// Creates a replaceable local optimistic layer for queued mutations.
+  convex.OptimisticUpdateHandle createOptimisticUpdate(
+    convex.OptimisticUpdate update,
+  );
+
   /// Executes an action.
   Future<dynamic> action(String name, [Map<String, dynamic> args = const {}]);
 
@@ -251,6 +256,11 @@ class ConvexClientRuntime implements ConvexRuntimeClient {
   ]) {
     return _client.mutate(name, args, optimisticUpdate);
   }
+
+  @override
+  convex.OptimisticUpdateHandle createOptimisticUpdate(
+    convex.OptimisticUpdate update,
+  ) => _client.createOptimisticUpdate(update);
 
   @override
   /// Executes a query through the wrapped client.

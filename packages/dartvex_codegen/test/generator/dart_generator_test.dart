@@ -37,6 +37,129 @@ void main() {
       expect(output.warnings, anyElement(contains('cannot be represented')));
     });
 
+    test('generated mutation widgets expose and forward latest mode', () async {
+      final output = DartGenerator(generateFlutterWidgets: true).generate(spec);
+      final widgets = output.files['widgets/messages.dart']!;
+      expect(widgets, contains('this.mode = MutationMode.single'));
+      expect(widgets, contains('final MutationMode mode;'));
+      expect(widgets, contains('mode: mode,'));
+      final expected =
+          await File(
+            path.join('test', 'goldens', 'sample', 'widgets', 'messages.dart'),
+          ).readAsString();
+      expect(widgets, expected);
+    });
+
+    test(
+      'run handles mutation failures and preserves callback errors',
+      () async {
+        final output = DartGenerator(generateFlutterWidgets: true).generate(
+          FunctionsSpec(
+            url: 'https://sample.convex.cloud',
+            functions: [
+              _function(identifier: 'tasks.ts:send'),
+              _function(
+                identifier: 'tasks.ts:clear',
+                returns: const ConvexNullType(),
+              ),
+            ],
+          ),
+        );
+        final widgets = output.files['widgets/tasks.dart']!;
+        String executor(String name) {
+          final start = widgets.indexOf('class ${name}MutationExecutor');
+          final end = widgets.indexOf('/// Flutter widget', start);
+          return widgets.substring(start, end);
+        }
+
+        final directory = await Directory.systemTemp.createTemp('dartvex_run_');
+        try {
+          final script = File(path.join(directory.path, 'run.dart'));
+          await script.writeAsString('''
+import 'dart:async';
+class NoArgs { const NoArgs(); }
+${executor('TasksSend')}
+${executor('TasksClear')}
+void check(bool value) { if (!value) throw StateError('Check failed'); }
+Future<void> main() async {
+  final errors = <Object>[];
+  await runZonedGuarded(() async {
+    final result = Completer<String>();
+    String? received;
+    final executor = TasksSendMutationExecutor((_) => result.future);
+    executor.run(onSuccess: (value) { received = value; });
+    result.complete('sent');
+    await Future<void>.delayed(Duration.zero);
+    check(received == 'sent');
+    check(await executor() == 'sent');
+
+    final failed = TasksSendMutationExecutor((_) => Future.error(StateError('mutation')));
+    failed.run(onSuccess: (_) { throw StateError('must not run'); });
+    await Future<void>.delayed(Duration.zero);
+    check(errors.isEmpty);
+    try { await failed(); throw StateError('must throw'); }
+    catch (error) { check(error.toString().contains('mutation')); }
+
+    var cleared = false;
+    TasksClearMutationExecutor((_) async {}).run(onSuccess: (_) { cleared = true; });
+    await Future<void>.delayed(Duration.zero);
+    check(cleared);
+
+    executor.run(onSuccess: (_) { throw StateError('callback'); });
+    await Future<void>.delayed(Duration.zero);
+    check(errors.length == 1 && errors.single.toString().contains('callback'));
+  }, (error, stack) { errors.add(error); });
+  check(errors.length == 1 && errors.single.toString().contains('callback'));
+}
+''');
+          final result = await Process.run(Platform.resolvedExecutable, [
+            script.path,
+          ]);
+          expect(
+            result.exitCode,
+            0,
+            reason: '${result.stdout}\n${result.stderr}',
+          );
+        } finally {
+          await directory.delete(recursive: true);
+        }
+      },
+    );
+
+    test('run supports any arguments and avoids callback name collisions', () {
+      final output = DartGenerator(generateFlutterWidgets: true).generate(
+        FunctionsSpec(
+          url: 'https://sample.convex.cloud',
+          functions: [
+            _function(identifier: 'tasks.ts:any', args: const ConvexAnyType()),
+            _function(
+              identifier: 'tasks.ts:collision',
+              args: const ConvexObjectType({
+                'onSuccess': ConvexField(
+                  fieldType: ConvexStringType(),
+                  optional: false,
+                ),
+                'onSuccessCallback': ConvexField(
+                  fieldType: ConvexStringType(),
+                  optional: true,
+                ),
+              }),
+            ),
+          ],
+        ),
+      );
+      final widgets = output.files['widgets/tasks.dart']!;
+      expect(
+        widgets,
+        contains('Map<String, dynamic> args = const <String, dynamic>{}'),
+      );
+      expect(
+        widgets,
+        contains('void Function(String result)? onSuccessCallbackCallback'),
+      );
+      expect(widgets, contains('onSuccess: onSuccess,'));
+    });
+
     test('emits the generated header and analyzer suppressions everywhere', () {
       final output = DartGenerator().generate(spec);
 
@@ -122,6 +245,102 @@ void main() {
           "count: expectBigInt(map['count'], label: 'SyncTypeResultCount')",
         ),
       );
+    });
+
+    test('shares schema discriminated unions across endpoint shapes', () {
+      const category = ConvexUnionType(<ConvexType>[
+        ConvexObjectType(<String, ConvexField>{
+          'kind': ConvexField(
+            fieldType: ConvexLiteralType('beer'),
+            optional: false,
+          ),
+        }),
+        ConvexObjectType(<String, ConvexField>{
+          'kind': ConvexField(
+            fieldType: ConvexLiteralType('wine'),
+            optional: false,
+          ),
+        }),
+      ]);
+      final output = DartGenerator(
+        schema: const SchemaSpec(
+          tables: <SchemaTableSpec>[
+            SchemaTableSpec(
+              name: 'drinks',
+              documentType: ConvexObjectType(<String, ConvexField>{
+                'category': ConvexField(fieldType: category, optional: false),
+              }),
+            ),
+          ],
+        ),
+      ).generate(
+        FunctionsSpec(
+          url: 'https://example.com',
+          functions: <BaseFunctionSpec>[
+            _function(
+              identifier: 'drinks.ts:create',
+              args: const ConvexObjectType(<String, ConvexField>{
+                'category': ConvexField(fieldType: category, optional: false),
+              }),
+            ),
+            _function(
+              identifier: 'drinks.ts:get',
+              returns: const ConvexObjectType(<String, ConvexField>{
+                'category': ConvexField(fieldType: category, optional: false),
+              }),
+            ),
+          ],
+        ),
+      );
+
+      expect(output.files, contains('types.dart'));
+      expect(output.files['types.dart'], contains('sealed class Category'));
+      expect(output.files['types.dart'], contains('final class Beer'));
+      expect(output.files['api.dart'], contains("export 'types.dart';"));
+      final drinks = output.files['modules/drinks.dart']!;
+      expect(drinks, contains("import '../types.dart';"));
+      expect(drinks, contains('required Category category'));
+      expect(drinks, contains('Category category'));
+      expect(drinks, isNot(contains('CreateArgsCategory')));
+      expect(drinks, isNot(contains('GetResultCategory')));
+    });
+
+    test('emits ID wrappers referenced only by shared schema types', () {
+      const target = ConvexUnionType(<ConvexType>[
+        ConvexObjectType(<String, ConvexField>{
+          'kind': ConvexField(
+            fieldType: ConvexLiteralType('user'),
+            optional: false,
+          ),
+          'id': ConvexField(fieldType: ConvexIdType('users'), optional: false),
+        }),
+        ConvexObjectType(<String, ConvexField>{
+          'kind': ConvexField(
+            fieldType: ConvexLiteralType('team'),
+            optional: false,
+          ),
+          'id': ConvexField(fieldType: ConvexIdType('teams'), optional: false),
+        }),
+      ]);
+      final output = DartGenerator(
+        schema: const SchemaSpec(
+          tables: <SchemaTableSpec>[
+            SchemaTableSpec(
+              name: 'events',
+              documentType: ConvexObjectType(<String, ConvexField>{
+                'target': ConvexField(fieldType: target, optional: false),
+              }),
+            ),
+          ],
+        ),
+      ).generate(
+        FunctionsSpec(url: 'https://example.com', functions: const []),
+      );
+
+      expect(output.files['types.dart'], contains('UsersId id'));
+      expect(output.files['types.dart'], contains('TeamsId id'));
+      expect(output.files['schema.dart'], contains('class UsersId'));
+      expect(output.files['schema.dart'], contains('class TeamsId'));
     });
 
     test('throws when function names generate duplicate methods', () {
@@ -480,11 +699,12 @@ class _InvalidMethodNaming extends Naming {
 FunctionSpec _function({
   required String identifier,
   String functionType = 'Mutation',
+  ConvexType args = const ConvexObjectType(<String, ConvexField>{}),
   ConvexType returns = const ConvexStringType(),
 }) {
   return FunctionSpec(
     functionType: functionType,
-    args: const ConvexObjectType(<String, ConvexField>{}),
+    args: args,
     returns: returns,
     identifier: identifier,
     visibility: const Visibility('public'),

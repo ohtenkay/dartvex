@@ -11,6 +11,16 @@ void main() {
       expect(jsonDecode(result), isA<Map<String, dynamic>>());
     });
 
+    test('extracts schema export JSON', () {
+      const input =
+          'warning\n{"tables":[{"tableName":"drinks","documentType":{"type":"object","value":{}}}]}';
+
+      final decoded = jsonDecode(extractSchemaSpecJson(input));
+
+      expect(decoded, isA<Map<String, dynamic>>());
+      expect((decoded as Map<String, dynamic>)['tables'], hasLength(1));
+    });
+
     test('extracts JSON when prefixed with warnings', () {
       const input =
           'npm warn deprecated package@1.0.0\n{"url":"https://test.convex.cloud","functions":[]}';

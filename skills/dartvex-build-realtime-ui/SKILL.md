@@ -47,13 +47,17 @@ ConvexQuery<List<Message>>(
 ## Writes — ConvexMutation / ConvexAction
 
 ```dart
-ConvexMutation<String>(
-  mutation: 'messages:send',
+ConvexMutation<SendArgs, MessagesId>(
+  mutation: api.messages.sendMutation,
   builder: (context, mutate, snapshot) {
     return FilledButton(
       onPressed: snapshot.isLoading
           ? null
-          : () => mutate({'channel': 'general', 'body': 'Hello'}),
+          : () => mutate((
+              author: 'Flutter User',
+              text: 'Hello',
+              attachment: const Optional.absent(),
+            )),
       child: Text(snapshot.isLoading ? 'Sending…' : 'Send'),
     );
   },
@@ -68,8 +72,8 @@ Overlay query results the instant the mutation is sent; automatic rollback
 when it settles or fails:
 
 ```dart
-ConvexMutation<String>(
-  mutation: 'messages:send',
+ConvexMutation<SendArgs, MessagesId>(
+  mutation: api.messages.sendMutation,
   optimisticUpdate: (store) {
     final existing =
         store.getQuery('messages:list', const {'channel': 'general'});

@@ -9,6 +9,8 @@ class GenerateConfig {
     required this.dryRun,
     required this.verbose,
     required this.watch,
+    this.flutterWidgets = false,
+    this.discriminator = 'kind',
     this.projectDirectory,
     this.specFile,
   });
@@ -34,6 +36,12 @@ class GenerateConfig {
   /// Whether the generator should watch for source changes and rerun automatically.
   final bool watch;
 
+  /// Whether to generate typed Flutter mutation widgets.
+  final bool flutterWidgets;
+
+  /// Object-union field used to select generated sealed subclasses.
+  final String discriminator;
+
   /// Returns a copy with filesystem paths normalized to absolute paths.
   GenerateConfig normalize() {
     return GenerateConfig(
@@ -48,6 +56,8 @@ class GenerateConfig {
       dryRun: dryRun,
       verbose: verbose,
       watch: watch,
+      flutterWidgets: flutterWidgets,
+      discriminator: discriminator,
     );
   }
 
@@ -60,6 +70,9 @@ class GenerateConfig {
     }
     if (outputDirectory.trim().isEmpty) {
       throw ArgumentError('--output is required.');
+    }
+    if (discriminator.trim().isEmpty) {
+      throw ArgumentError('--discriminator cannot be empty.');
     }
   }
 }

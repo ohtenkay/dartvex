@@ -22,13 +22,13 @@ platforms:
   windows:
 
 environment:
-  sdk: ^3.8.0
-  flutter: '>=3.32.0'
+  sdk: ^3.10.0
+  flutter: '>=3.38.0'
 
 dependencies:
   collection: ^1.19.1
-  connectivity_plus: ^6.1.0
-  cupertino_http: ^2.4.0
+  connectivity_plus: ^7.3.2
+  cupertino_http: ^3.1.0
   dartvex: ^0.2.0
   flutter:
     sdk: flutter
@@ -40,7 +40,7 @@ dependencies:
 
 dev_dependencies:
   file: ^7.0.1
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
 

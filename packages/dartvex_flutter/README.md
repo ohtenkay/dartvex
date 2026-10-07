@@ -10,8 +10,22 @@ Flutter widgets and builders for [dartvex](https://pub.dev/packages/dartvex) —
 
 `dartvex_flutter` removes the repetitive widget lifecycle code around realtime
 Convex subscriptions, mutations, actions, and connection state. The package is
-designed around a small runtime interface so a future local-first adapter can
-plug into the same widgets without breaking the public API.
+designed around a small runtime interface for client adapters.
+
+## Fork additions
+
+This package is part of [ohtenkay/dartvex](https://github.com/ohtenkay/dartvex),
+a fork of [AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
+
+Adds typed query widgets, typed mutation references and optimistic updates,
+latest-value mutation mode, and generated mutation executors. See the sections
+marked **(fork addition)** below and the
+[Unreleased changelog](CHANGELOG.md#unreleased) for breaking API migration notes.
+
+The pub.dev installation examples below refer to upstream releases. Use this
+checkout or Git dependencies pinned to a fork commit for fork additions, keeping
+related Dartvex packages on the same revision. See the
+[root fork overview](../../README.md#fork-additions).
 
 <p align="center">
   <a href="https://github.com/AndreFrelicot/dartvex">
@@ -29,11 +43,13 @@ plug into the same widgets without breaking the public API.
 | [`dartvex_local`](https://pub.dev/packages/dartvex_local) | Offline support — SQLite cache, mutation queue |
 | [`dartvex_auth_better`](https://pub.dev/packages/dartvex_auth_better) | Better Auth adapter |
 
-Source and full docs: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex)
+Fork source and docs: [github.com/ohtenkay/dartvex](https://github.com/ohtenkay/dartvex).
+Upstream: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
 
 ## Features
 
 - `ConvexQuery` — reactive query widget with automatic subscription management
+- `ConvexTypedQuery` **(fork addition)** — reactive query widget using a generated reference, typed data builder, and overridable loading and error UI
 - `ConvexMutation` / `ConvexAction` — request builder widgets, with optional
   optimistic updates on `ConvexMutation`
 - `ConvexImage` — native image display from Convex file storage
@@ -63,7 +79,10 @@ dependencies:
   dartvex_flutter: ^0.2.0
 ```
 
-Requires Dart `^3.8.0` and Flutter `>=3.32.0`.
+Requires Dart `^3.10.0` and Flutter `>=3.38.0`. Native transports require
+iOS 15 or macOS 12, built with Xcode `>=26.1.1`.
+Android requires Android Gradle Plugin `>=8.12.1`,
+Gradle `>=8.13`, and Kotlin `>=2.2.0`.
 
 ## Platform Transports
 
@@ -164,16 +183,29 @@ ConvexQuery<List<Message>>(
 )
 ```
 
-## Mutation Widget
+## Typed Query Widget (fork addition)
+
+`ConvexTypedQuery` takes a generated query reference and typed arguments.
+Its `builder` receives decoded data; loading and error UI are provided by
+default and can be replaced with `waitingBuilder` and `errorBuilder`.
+Use `ConvexTypedQuery.snapshot` to handle every snapshot state yourself.
+Generated query widgets provide named arguments for the same behavior; see
+[the generation guide](../dartvex_codegen/README.md#generated-flutter-widgets-fork-addition).
+
+## Mutation Widget (fork addition)
 
 ```dart
-ConvexMutation<String>(
-  mutation: 'messages:send',
+ConvexMutation<SendArgs, MessagesId>(
+  mutation: api.messages.sendMutation,
   builder: (context, mutate, snapshot) {
     return FilledButton(
       onPressed: snapshot.isLoading
           ? null
-          : () => mutate({'author': 'Flutter User', 'text': 'Hello'}),
+          : () => mutate((
+              author: 'Flutter User',
+              text: 'Hello',
+              attachment: const Optional.absent(),
+            )),
       child: Text(snapshot.isLoading ? 'Sending...' : 'Send'),
     );
   },
@@ -246,8 +278,8 @@ instant the mutation is sent; it rolls back automatically when the mutation
 completes or fails:
 
 ```dart
-ConvexMutation<String>(
-  mutation: 'messages:send',
+ConvexMutation<SendArgs, MessagesId>(
+  mutation: api.messages.sendMutation,
   optimisticUpdate: (store) {
     final existing = store.getQuery('messages:list', const {'channel': 'general'});
     final messages = existing is List ? List<dynamic>.from(existing) : <dynamic>[];
@@ -256,12 +288,74 @@ ConvexMutation<String>(
   },
   builder: (context, mutate, snapshot) {
     return FilledButton(
-      onPressed: () => mutate({'channel': 'general', 'text': 'Hello'}),
+      onPressed: () => mutate((
+        author: 'Flutter User',
+        text: 'Hello',
+        attachment: const Optional.absent(),
+      )),
       child: const Text('Send'),
     );
   },
 )
 ```
+
+### Generated mutation executors (fork addition)
+
+Generated mutation executors offer `run(...)` for UI callbacks. It returns
+`void`, exposes mutation failures through `snapshot.error`, and optionally runs
+`onSuccess` with the result:
+
+```dart
+builder: (context, mutate, snapshot) => FilledButton(
+  onPressed: snapshot.isLoading ? null : () => mutate.run(
+    author: 'Flutter User',
+    text: 'Hello',
+    onSuccess: (id) => Navigator.of(context).pop(id),
+  ),
+  child: const Text('Send'),
+),
+```
+
+Use `await mutate(...)` when you need the result or want to catch mutation errors.
+`run` does not suppress errors thrown by your success callback.
+
+### Latest-value mutations (fork addition)
+
+Mutation widgets reject overlapping calls by default (`MutationMode.single`).
+For replacement writes such as an accent color, use `mode: MutationMode.latest`
+on either `ConvexMutation` or its generated wrapper:
+
+```dart
+UserUpdateAccentColorMutation(
+  mode: MutationMode.latest,
+  optimisticUpdate: updateAccentColorLocally,
+  builder: (context, mutate, snapshot) => /* your selector */,
+)
+```
+
+Latest mode applies each optimistic update immediately, sends one request at a
+time, and replaces any unsent invocation with the newest one. Loading remains
+true until the queue drains; only the final invocation determines the snapshot.
+Use this for setting a value, not inserts, increments, or operations where every
+call must execute. Writes from other clients still follow server commit order.
+
+An unsent, replaced invocation's future fails with `MutationSupersededException`
+without setting a snapshot error. Sent invocations retain their own results or
+errors. Earlier failures do not stop a newer pending invocation; a final failure
+removes the optimistic layer and appears in the snapshot. Changing the widget's
+mutation name, client, or mode, or disposing it, cancels unsent calls with
+`MutationCancelledException` and releases its layer. Sent calls are not cancelled.
+For custom runtime-client migration requirements, see the
+[Unreleased changelog](CHANGELOG.md#unreleased).
+
+### Typed optimistic updates (fork addition)
+
+Generated mutation widgets also accept a typed `optimisticUpdate` callback.
+It receives typed mutation arguments, a typed query store, and an invocation
+context whose temporary ID and timestamp stay stable when the update is
+replayed. The query reference checks the argument and result types for
+`getQuery`, `setQuery`, `updateQuery`, and `clearQuery`. The application still
+chooses which queries to update.
 
 ## Connection Status
 

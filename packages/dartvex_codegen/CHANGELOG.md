@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (fork)
+
+- Project generation now loads the local Convex schema and emits reusable
+  schema-derived discriminated unions in `types.dart`. A union member's
+  required string-literal `kind` field selects an unprefixed Dart subclass;
+  other fields become constructor parameters and fields.
+- `--discriminator` changes the global object-union discriminator from its
+  default `kind`.
+- `--flutter-widgets` emits a separate `widgets.dart` entrypoint and typed
+  widgets for public mutations and non-paginated queries, including typed
+  optimistic callbacks and latest-value mutation mode.
+- Generated query widgets provide loading/error UI with overrides and a
+  snapshot constructor for full state handling.
+- Generated mutation executors provide `run(...)`, optional success callbacks,
+  and named arguments. Mutation failures remain observable in the snapshot;
+  exceptions thrown by success callbacks are not suppressed.
+- Generated query and mutation references include codecs for typed Flutter
+  widgets and optimistic query-store operations.
+
+### Fixed (fork)
+
+- Generated query-widget parameters avoid collisions with framework and
+  builder argument names.
+- Generated Flutter files carry generated-code headers and suppress redundant
+  import diagnostics.
+
+### Changed (fork)
+
+- Project generation bundles and evaluates the local schema using the
+  backend's installed `esbuild` and Convex `SchemaDefinition.export()`.
+  Spec-file-only generation retains endpoint-local types.
+- Shared schema-derived unions replace duplicated endpoint-local types where
+  their shapes match. Regenerate bindings and update callers to the shared
+  sealed types and unprefixed subclasses; conflicting type names fail
+  generation instead of producing ambiguous Dart source.
+- Flutter output requires this fork's matching core and Flutter packages;
+  upstream pub.dev 0.2.0 does not include the new reference/widget APIs.
+
 ## [0.2.0] - 2026-06-12
 
 ### Added
