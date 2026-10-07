@@ -8,6 +8,21 @@
 
 Pure Dart client for [Convex](https://convex.dev) with WebSocket sync, type-safe values, and reactive subscriptions. Works on iOS, Android, web, and desktop.
 
+## Fork additions
+
+This package is part of [ohtenkay/dartvex](https://github.com/ohtenkay/dartvex),
+a fork of [AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
+
+Adds typed query and mutation references, a typed optimistic query store,
+stable optimistic invocation IDs/timestamps, and replaceable optimistic layers.
+See [typed optimistic updates](#typed-optimistic-updates-fork-addition) and the
+[Unreleased changelog](CHANGELOG.md#unreleased).
+
+The pub.dev installation examples below refer to upstream releases. Use this
+checkout or Git dependencies pinned to a fork commit for fork additions, keeping
+related Dartvex packages on the same revision. See the
+[root fork overview](../../README.md#fork-additions).
+
 <p align="center">
   <a href="https://github.com/AndreFrelicot/dartvex">
     <img src="https://raw.githubusercontent.com/AndreFrelicot/dartvex/main/assets/dartvex-poster.webp" width="900" alt="Dartvex Flutter demo — real-time chats running on iOS and macOS" />
@@ -26,7 +41,8 @@ Pure Dart client for [Convex](https://convex.dev) with WebSocket sync, type-safe
 
 > **Building a Flutter app?** Start with [`dartvex_flutter`](https://pub.dev/packages/dartvex_flutter) — it pulls in `dartvex` automatically.
 
-Source and full docs: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex)
+Fork source and docs: [github.com/ohtenkay/dartvex](https://github.com/ohtenkay/dartvex).
+Upstream: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
 
 ## Features
 
@@ -48,6 +64,27 @@ Source and full docs: [github.com/AndreFrelicot/dartvex](https://github.com/Andr
   auth-refreshing signal for "authenticating…" indicators
 - Native and browser WebSocket adapters (conditional import)
 - Structured opt-in logging for transport, auth, and storage diagnostics
+
+## Typed optimistic updates (fork addition)
+
+Generated bindings expose `ConvexQueryReference<Args, Result>` and
+`ConvexMutationReference<Args, Result>` with wire codecs; zero-argument
+references use `NoArgs`.
+
+`TypedOptimisticUpdate<Args>` receives a `TypedOptimisticLocalStore`, mutation
+arguments, and an `OptimisticMutationContext`. The store supports typed
+`getQuery`, `getAllQueries`, `setQuery`, `updateQuery`, and `clearQuery` using
+query references. Bind a callback to its arguments with
+`bindTypedOptimisticUpdate`; temporary IDs and timestamps remain stable across
+callback replays. Keep updates synchronous and query results immutable.
+`getQuery` returns null for both absent and actual null results;
+`updateQuery` skips null results.
+
+`ConvexClient.createOptimisticUpdate` creates a local layer independent of a
+network request. Call `replace` to change the overlay and `dispose` when the
+operation is confirmed or abandoned. This supports queued latest-value writes;
+see [the Flutter guide](../dartvex_flutter/README.md#latest-value-mutations-fork-addition).
+These layers are in-memory and do not provide durable offline mutation replay.
 
 ## Platform Support
 

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Added (fork)
 
 - `BetterAuthClient.changePassword()` changes an authenticated user's password
   using the existing bearer session. Sessions stay valid by default; optional

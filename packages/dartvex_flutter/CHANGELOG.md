@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (fork)
+
+- `ConvexTypedQuery` uses generated references and typed arguments/results,
+  with default loading/error UI, overrides, and a snapshot constructor.
+- Typed optimistic callbacks bind mutation arguments and stable invocation
+  contexts to generated query references.
+- `MutationMode.latest` applies optimistic selections immediately and sends
+  the active invocation followed by only the newest unsent invocation.
+  Superseded and cancelled queued calls fail with dedicated exceptions;
+  only the final invocation determines the widget snapshot.
+
+### Changed (fork, breaking)
+
+- `ConvexMutation<T>` becomes `ConvexMutation<Args, Result>`. Its `mutation`
+  parameter now takes a `ConvexMutationReference` instead of a string;
+  the reference replaces the widget's `decode` parameter. The builder's
+  callable now takes typed arguments instead of a raw argument map.
+- Custom implementations of `ConvexRuntimeClient` must implement
+  `createOptimisticUpdate`. `ConvexClientRuntime` delegates to the core client;
+  custom clients need equivalent replaceable-layer behavior to support
+  latest mode with optimistic updates.
+
+### Migration from upstream (fork)
+
+Regenerate bindings using this fork's codegen and use its matching core and
+Flutter packages. For a schema with `messages:send(author, text, attachment?)`:
+
+```dart
+// Before: upstream string-based mutation with raw arguments.
+ConvexMutation<MessagesId>(
+  mutation: 'messages:send',
+  decode: (raw) => MessagesId(raw as String),
+  builder: (context, mutate, snapshot) => FilledButton(
+    onPressed: () => mutate({'author': 'Ada', 'text': 'Hello'}),
+    child: const Text('Send'),
+  ),
+)
+
+// After: generated reference and typed argument record.
+ConvexMutation<SendArgs, MessagesId>(
+  mutation: api.messages.sendMutation,
+  builder: (context, mutate, snapshot) => FilledButton(
+    onPressed: () => mutate((
+      author: 'Ada',
+      text: 'Hello',
+      attachment: const Optional.absent(),
+    )),
+    child: const Text('Send'),
+  ),
+)
+```
+
+Alternatively generate with `--flutter-widgets` and use
+`MessagesSendMutation`; its executor accepts named arguments and provides
+`run(...)` for callbacks. Keep `await mutate(...)` when you need to handle
+results/errors yourself. See [the usage guide](README.md#generated-mutation-executors-fork-addition).
+
 ## [0.2.0] - 2026-06-12
 
 ### Added

@@ -21,6 +21,35 @@
 
 ---
 
+## Fork additions
+
+This is [ohtenkay/dartvex](https://github.com/ohtenkay/dartvex), a fork of
+[AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex). Sections marked
+**(fork addition)** describe features added here since upstream commit `e5800e5`.
+
+- **Schema-derived sealed unions** with reusable types and a configurable
+  discriminator — [codegen guide](packages/dartvex_codegen/README.md#schema-derived-discriminated-unions-fork-addition).
+- **Generated typed Flutter query and mutation widgets**, default loading/error
+  UI, and mutation executors with `run(...)` and success callbacks —
+  [codegen guide](packages/dartvex_codegen/README.md#generated-flutter-widgets-fork-addition).
+- **Typed optimistic query updates** and replaceable local optimistic layers —
+  [core guide](packages/dartvex/README.md#typed-optimistic-updates-fork-addition).
+- **Latest-value mutations** for selectors and other replacement writes —
+  [Flutter guide](packages/dartvex_flutter/README.md#latest-value-mutations-fork-addition).
+- **Authenticated password changes** —
+  [auth guide](packages/dartvex_auth_better/README.md#6-change-password-fork-addition).
+- **Minimal Nix development environment** — [development setup](#development-setup-fork-addition).
+
+Fork changes are unreleased. The pub.dev versions and badges below refer to
+upstream; use this checkout or Git dependencies pinned to a fork commit for
+these additions. Keep related Dartvex packages on the same fork revision.
+See the package changelogs for release details and migration notes:
+[core](packages/dartvex/CHANGELOG.md#unreleased),
+[codegen](packages/dartvex_codegen/CHANGELOG.md#unreleased),
+[Flutter](packages/dartvex_flutter/CHANGELOG.md#unreleased), and
+[auth](packages/dartvex_auth_better/CHANGELOG.md#unreleased).
+`dartvex_local` has no fork-specific changes on this branch.
+
 ## Why Dartvex?
 
 - **Pure-Dart core** — the `dartvex` client has no Rust FFI or Flutter
@@ -239,6 +268,33 @@ The local-first query cache and mutation queue use SQLite and are intended for
 native targets. For files on web, resolve signed Convex storage URLs and render
 them directly; disk-backed file cache/offline image fallback is not supported on
 web in this release.
+
+## Development setup (fork addition)
+
+With [devenv](https://devenv.sh/) installed, enter the pinned development shell:
+
+```bash
+devenv shell
+```
+
+It provides Flutter (including Dart), Node.js 24, and npm. Package analysis,
+Dart tests, and Flutter widget tests need no emulator. Android builds and device
+testing need an Android SDK; an emulator is optional with a physical device.
+The main Flutter example requires Dart 3.11 or newer.
+
+Resolve local package dependencies before testing your changes. For example:
+
+```bash
+bash scripts/ci-local-dependency-overrides.sh packages/dartvex_flutter
+cd packages/dartvex_flutter
+flutter pub get
+flutter analyze
+flutter test
+```
+
+Run the override script for each affected package; use `dart pub get`,
+`dart analyze`, and `dart test` for pure Dart packages. See
+[the example guide](example/README.md) for the Convex backend and demo app.
 
 ## Contributing
 

@@ -14,6 +14,20 @@ This keeps Better Auth isolated from the core SDK packages:
 - [`dartvex_flutter`](https://pub.dev/packages/dartvex_flutter) stays provider-agnostic
 - Better Auth logic lives here
 
+## Fork additions
+
+This package is part of [ohtenkay/dartvex](https://github.com/ohtenkay/dartvex),
+a fork of [AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
+
+Adds authenticated password changes with optional session revocation. See
+[change password](#6-change-password-fork-addition) and the
+[Unreleased changelog](CHANGELOG.md#unreleased).
+
+The pub.dev installation examples below refer to upstream releases. Use this
+checkout or Git dependencies pinned to a fork commit for fork additions, keeping
+related Dartvex packages on the same revision. See the
+[root fork overview](../../README.md#fork-additions).
+
 <p align="center">
   <a href="https://github.com/AndreFrelicot/dartvex">
     <img src="https://raw.githubusercontent.com/AndreFrelicot/dartvex/main/assets/dartvex-poster.webp" width="900" alt="Dartvex Flutter demo — real-time chats running on iOS and macOS" />
@@ -30,7 +44,8 @@ This keeps Better Auth isolated from the core SDK packages:
 | [`dartvex_local`](https://pub.dev/packages/dartvex_local) | Offline support — SQLite cache, mutation queue |
 | **[`dartvex_auth_better`](https://pub.dev/packages/dartvex_auth_better)** | Better Auth adapter |
 
-Source and full docs: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex)
+Fork source and docs: [github.com/ohtenkay/dartvex](https://github.com/ohtenkay/dartvex).
+Upstream: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
 
 ## Installation
 
@@ -147,7 +162,7 @@ await authClient.signOut(sessionToken: session.sessionToken);
 await secureStorage.delete(key: 'session_token');
 ```
 
-### 6. Change password
+### 6. Change password (fork addition)
 
 ```dart
 await authClient.changePassword(
@@ -193,7 +208,7 @@ final session = await authClient.verifyMagicLink(token: magicLinkToken);
 - `signIn({email, password})` — authenticate, returns `BetterAuthSession`
 - `forgotPassword({email, redirectTo?})` — send password reset email
 - `resetPassword({token, newPassword})` — confirm password reset
-- `changePassword({sessionToken, currentPassword, newPassword, revokeOtherSessions?})` — change password; returns a replacement session token when revoking sessions
+- **(fork addition)** `changePassword({sessionToken, currentPassword, newPassword, revokeOtherSessions?})` — change password; returns a replacement session token when revoking sessions
 - `sendMagicLink({email, callbackURL?})` — send passwordless sign-in link
 - `verifyMagicLink({token})` — exchange magic link token for a session
 - `signOut({sessionToken})` — end session

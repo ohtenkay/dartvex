@@ -8,6 +8,22 @@
 
 CLI code generator for [Convex](https://convex.dev) backends. Generates type-safe Dart bindings from your Convex schema and function spec — companion tool to [`dartvex`](https://pub.dev/packages/dartvex).
 
+## Fork additions
+
+This package is part of [ohtenkay/dartvex](https://github.com/ohtenkay/dartvex),
+a fork of [AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
+
+Adds schema-derived sealed unions and opt-in generated Flutter query/mutation
+widgets, typed references, and mutation executors. See
+[schema unions](#schema-derived-discriminated-unions-fork-addition),
+[Flutter generation](#generated-flutter-widgets-fork-addition), and the
+[Unreleased changelog](CHANGELOG.md#unreleased).
+
+The pub.dev installation examples below refer to upstream releases. Use this
+checkout or Git dependencies pinned to a fork commit for fork additions, keeping
+related Dartvex packages on the same revision. See the
+[root fork overview](../../README.md#fork-additions).
+
 <p align="center">
   <a href="https://github.com/AndreFrelicot/dartvex">
     <img src="https://raw.githubusercontent.com/AndreFrelicot/dartvex/main/assets/dartvex-poster.webp" width="900" alt="Dartvex Flutter demo — real-time chats running on iOS and macOS" />
@@ -24,7 +40,8 @@ CLI code generator for [Convex](https://convex.dev) backends. Generates type-saf
 | [`dartvex_local`](https://pub.dev/packages/dartvex_local) | Offline support — SQLite cache, mutation queue |
 | [`dartvex_auth_better`](https://pub.dev/packages/dartvex_auth_better) | Better Auth adapter |
 
-Source and full docs: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex)
+Fork source and docs: [github.com/ohtenkay/dartvex](https://github.com/ohtenkay/dartvex).
+Upstream: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
 
 ## Installation
 
@@ -65,17 +82,22 @@ dart run dartvex_codegen generate \
 Useful flags:
 
 - `--client-import package:dartvex/dartvex.dart`
-- `--flutter-widgets` generates `widgets.dart` with a typed widget for every public mutation and non-paginated query. Add `dartvex_flutter` and Flutter to the consuming app.
-- `--discriminator kind`
+- `--flutter-widgets` **(fork addition)** generates `widgets.dart` with a typed widget for every public mutation and non-paginated query. Add `dartvex_flutter` and Flutter to the consuming app.
+- `--discriminator kind` **(fork addition)**
 - `--dry-run`
 - `--verbose`
 - `--watch`
+
+### Generated Flutter widgets (fork addition)
 
 The Flutter output is opt-in and separate from `api.dart`. For example,
 `DrinkCreateMutation` wraps `ConvexMutation` and passes a typed callable to
 its builder. Call it with named arguments such as
 `create(name: name, alcoholPercentage: percentage, drinkCategory: category)`;
-the generated wrapper constructs and encodes the argument record.
+the generated wrapper constructs and encodes the argument record. Its
+`run(...)` method returns void and reports mutation errors through the snapshot;
+pass `onSuccess` for a result callback, or await the callable for explicit error
+handling. See [executor usage](../dartvex_flutter/README.md#generated-mutation-executors-fork-addition).
 Generated mutation widgets also accept a typed `optimisticUpdate` callback
 that can read and update generated query references without raw maps.
 `DrinkListCustomQuery` wraps `ConvexTypedQuery` and gives its builder typed
@@ -84,6 +106,8 @@ to replace those states, or the `.snapshot` constructor to handle every state
 and its metadata. Query widgets accept named arguments and manage their
 subscriptions automatically. Paginated queries continue to use the generated
 pagination API.
+
+### Exported spec hygiene
 
 Before committing an exported spec file, scrub the real deployment URL it
 bakes in:
@@ -104,10 +128,10 @@ The generator produces:
 - `api.dart` as the main entrypoint
 - `runtime.dart` with shared helper types like `Optional<T>`
 - `schema.dart` with typed table IDs
-- `types.dart` with shared schema-derived discriminated unions, when present
+- `types.dart` **(fork addition)** with shared schema-derived discriminated unions, when present
 - `modules/...` with typed wrappers around Convex queries, mutations, and actions
 
-### Schema-derived discriminated unions
+### Schema-derived discriminated unions (fork addition)
 
 Project generation automatically loads `convex/schema.ts` (or `schema.js`) and
 discovers object unions whose members have a required string-literal `kind`
@@ -148,10 +172,11 @@ when the union structures are identical. Different structures using the same
 field name fail generation. Subclass names are global within `types.dart`, so
 discriminator values that normalize to the same Dart name also fail clearly.
 
-Schema loading bundles and evaluates the local schema with the project's
-installed `esbuild`, then calls Convex's `SchemaDefinition.export()`. Generation
-from only `--spec-file` has no local schema and therefore retains endpoint-local
-types.
+Project generation requires the backend's installed `esbuild` and Convex
+dependencies. Generation from only `--spec-file` has no local schema and
+therefore retains endpoint-local types. See the
+[Unreleased changelog](CHANGELOG.md#unreleased) for generator implementation
+and compatibility changes.
 
 Example:
 
