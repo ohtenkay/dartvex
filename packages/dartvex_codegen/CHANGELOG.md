@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added (fork)
 
+- Discriminated union bases expose abstract getters for fields whose validator
+  types and optionality match in every variant, and `is<Variant>` boolean
+  predicates. Predicate/schema-field name collisions fail generation clearly.
+  Common enum and object fields reuse one generated Dart type across variants.
+
 - Shared `<TableName>Document` types for complete table documents, including
   `_id` and `_creationTime`. Ordinary documents generate record typedefs;
   discriminated table-root unions generate shared sealed document types.

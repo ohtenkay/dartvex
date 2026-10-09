@@ -4,6 +4,7 @@ import '../spec/function_spec.dart';
 import 'dart_type.dart';
 import 'discriminated_union.dart';
 import 'schema_type_registry.dart';
+import 'type_identity.dart';
 
 /// Renders encode and decode expressions for a generated value.
 typedef ExpressionRenderer = String Function(String expression);
@@ -729,8 +730,56 @@ class TypeMapper {
   }) {
     final typeName = context.reserveTypeName(suggestedName);
     final declaration = StringBuffer(
-      'sealed class $typeName {\n  const $typeName();\n}\n',
+      'sealed class $typeName {\n  const $typeName();\n',
     );
+    final commonFields = <String, _DiscriminatedField>{};
+    for (final entry in union.members.first.object.value.entries) {
+      if (entry.key == union.discriminator) continue;
+      final field = entry.value;
+      if (!union.members.every((member) {
+        final other = member.object.value[entry.key];
+        return other != null &&
+            other.optional == field.optional &&
+            convexTypeIdentity(other.fieldType) ==
+                convexTypeIdentity(field.fieldType);
+      })) {
+        continue;
+      }
+      final mapped = mapType(
+        field.fieldType,
+        suggestedName: '$typeName${_naming.typeName(entry.key)}',
+        context: context,
+        fieldName: entry.key,
+      );
+      final name = _naming.fieldName(entry.key);
+      commonFields[entry.key] = _DiscriminatedField(
+        rawName: entry.key,
+        name: name,
+        mappedType: mapped,
+        optional: field.optional,
+      );
+      final annotation =
+          field.optional ? 'Optional<${mapped.annotation}>' : mapped.annotation;
+      declaration.writeln('  $annotation get $name;');
+    }
+    for (final member in union.members) {
+      final predicate = 'is${member.className}';
+      if (union.members.any(
+        (variant) => variant.object.value.keys.any(
+          (rawName) =>
+              rawName != union.discriminator &&
+              _naming.fieldName(rawName) == predicate,
+        ),
+      )) {
+        throw TypeMapperException(
+          'Generated predicate "$predicate" collides with a schema field in "$typeName".',
+        );
+      }
+      declaration.writeln(
+        '  bool get $predicate => this is ${member.className};',
+      );
+    }
+    declaration.writeln('}');
     final encodeCases = <String>[];
     final decodeCases = <String>[];
 
@@ -762,17 +811,18 @@ class TypeMapper {
           continue;
         }
         fields.add(
-          _DiscriminatedField(
-            rawName: entry.key,
-            name: _naming.fieldName(entry.key),
-            mappedType: mapType(
-              entry.value.fieldType,
-              suggestedName: '$className${_naming.typeName(entry.key)}',
-              context: context,
-              fieldName: entry.key,
-            ),
-            optional: entry.value.optional,
-          ),
+          commonFields[entry.key] ??
+              _DiscriminatedField(
+                rawName: entry.key,
+                name: _naming.fieldName(entry.key),
+                mappedType: mapType(
+                  entry.value.fieldType,
+                  suggestedName: '$className${_naming.typeName(entry.key)}',
+                  context: context,
+                  fieldName: entry.key,
+                ),
+                optional: entry.value.optional,
+              ),
         );
       }
 
