@@ -140,7 +140,15 @@ Ordinary documents become record typedefs. Table-root object unions with a
 required string-literal `kind` become sealed document types:
 
 ```dart
-sealed class SessionDocument { /* ... */ }
+sealed class SessionDocument {
+  const SessionDocument();
+
+  SessionId get id;
+  String get name;
+
+  bool get isSession => this is Session;
+  bool get isParty => this is Party;
+}
 final class Session extends SessionDocument { /* ... */ }
 final class Party extends SessionDocument { /* ... */ }
 ```
@@ -151,6 +159,18 @@ Matching uses the complete schema shape, so projections and enriched responses
 keep endpoint-specific result types. Regenerating existing project bindings
 renames complete-document result types to `<TableName>Document`; update callers
 to import those types from `types.dart` or the root `api.dart`.
+
+Every discriminated union base exposes abstract getters for fields present in
+all variants with identical validator types and optionality. Common enums and
+nested objects also share their generated Dart types. Fields with different
+validators, missing fields, and fields with differing optionality stay on the
+concrete variants. The discriminator remains a wire-only field.
+
+The base also exposes `is<Variant>` boolean getters for every variant, including
+unions without any common fields. Predicate names follow the generated subclass
+names, and generation fails if a predicate collides with a schema field name.
+These getters help with UI decisions; use Dart's `value is Party` check to
+promote a value before accessing party-specific fields.
 
 Nested schema object unions are also shared. Their field name supplies the base
 name, and they keep their existing naming convention without a `Document`

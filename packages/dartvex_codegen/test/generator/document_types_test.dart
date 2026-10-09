@@ -142,6 +142,9 @@ void main() {
   for (final kind in ['session', 'party']) {
     final raw = {'_id': 'session-id', '_creationTime': 123.0, 'name': 'Evening', 'kind': kind};
     final decoded = getValueQueryReference.decode(raw);
+    check(decoded.id.value == 'session-id' && decoded.creationTime == 123.0);
+    check(decoded.name == 'Evening');
+    check(decoded.isSession == (kind == 'session') && decoded.isParty == (kind == 'party'));
     final encoded = getValueQueryReference.encodeResult!(decoded) as Map;
     check(encoded.length == raw.length && raw.keys.every((key) => encoded[key] == raw[key]));
     check(findQueryReference.decode(raw).runtimeType == decoded.runtimeType);
@@ -150,7 +153,7 @@ void main() {
     check(reorderedQueryReference.decode(raw).runtimeType == decoded.runtimeType);
   }
   final roleArgs = setRoleQueryReference.decodeArgs({'role': {'kind': 'admin'}});
-  check(roleArgs.role.runtimeType.toString() == 'Admin');
+  check(roleArgs.role.isAdmin && !roleArgs.role.isMember);
   check(((setRoleQueryReference.encode(roleArgs) as Map)['role'] as Map)['kind'] == 'admin');
   check(findQueryReference.decode(null) == null);
   check(findQueryReference.encodeResult!(null) == null);
