@@ -27,7 +27,8 @@ This is [ohtenkay/dartvex](https://github.com/ohtenkay/dartvex), a fork of
 [AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex). Sections marked
 **(fork addition)** describe features added here since upstream commit `e5800e5`.
 
-- **Schema-derived sealed unions** with reusable types and a configurable
+- **Shared table documents and schema-derived sealed unions** with reusable
+  `<TableName>Document` types and a configurable
   discriminator — [codegen guide](packages/dartvex_codegen/README.md#schema-derived-discriminated-unions-fork-addition).
 - **Generated typed Flutter query and mutation widgets**, default loading/error
   UI, and mutation executors with `run(...)` and success callbacks —

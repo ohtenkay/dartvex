@@ -60,10 +60,11 @@ void main() {
       discriminator: 'kind',
     );
 
-    expect(registry.types, hasLength(1));
-    expect(registry.types.single.name, 'Category');
+    expect(registry.types, hasLength(3));
+    final categoryType = registry.types.singleWhere((type) => !type.isDocument);
+    expect(categoryType.name, 'Category');
     expect(
-      registry.types.single.paths,
+      categoryType.paths,
       containsAll(<String>['drinks.category', 'profiles.preferences.category']),
     );
   });
@@ -101,8 +102,14 @@ void main() {
       discriminator: 'kind',
     );
 
-    expect(registry.types.single.name, 'Category');
-    expect(registry.resolve(nullableReordered, fieldName: 'status'), isNull);
+    expect(
+      registry.types.singleWhere((type) => !type.isDocument).name,
+      'Category',
+    );
+    expect(
+      registry.resolve(nullableReordered, fieldName: 'status')?.name,
+      'Category',
+    );
   });
 
   test('rejects different unions using the same schema field name', () {
