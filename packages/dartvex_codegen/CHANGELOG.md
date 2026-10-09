@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added (fork)
 
+- Shared `<TableName>Document` types for complete table documents, including
+  `_id` and `_creationTime`. Ordinary documents generate record typedefs;
+  discriminated table-root unions generate shared sealed document types.
+  Direct, nullable, list, and nested query results reuse the same type.
+
 - Project generation now loads the local Convex schema and emits reusable
   schema-derived discriminated unions in `types.dart`. A union member's
   required string-literal `kind` field selects an unprefixed Dart subclass;
@@ -28,12 +33,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed (fork)
 
+- Returning the same discriminated table document from multiple endpoints no
+  longer generates colliding variant class names.
+- Endpoint fields with different names reuse uniquely matching schema unions,
+  preventing collisions such as `role` versus `sessionMemberRole`.
+
 - Generated query-widget parameters avoid collisions with framework and
   builder argument names.
 - Generated Flutter files carry generated-code headers and suppress redundant
   import diagnostics.
 
 ### Changed (fork)
+
+- Complete-document result types in project-generated bindings now use
+  `<TableName>Document` names instead of endpoint-specific names. Callers must
+  update those type references after regenerating. Projections, enriched
+  responses, nested value types, and spec-file-only generation keep their
+  existing naming.
 
 - Project generation bundles and evaluates the local schema using the
   backend's installed `esbuild` and Convex `SchemaDefinition.export()`.

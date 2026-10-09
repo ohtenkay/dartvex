@@ -128,14 +128,33 @@ The generator produces:
 - `api.dart` as the main entrypoint
 - `runtime.dart` with shared helper types like `Optional<T>`
 - `schema.dart` with typed table IDs
-- `types.dart` **(fork addition)** with shared schema-derived discriminated unions, when present
+- `types.dart` **(fork addition)** with shared table documents and schema-derived discriminated unions, when present
 - `modules/...` with typed wrappers around Convex queries, mutations, and actions
 
 ### Schema-derived discriminated unions (fork addition)
 
-Project generation automatically loads `convex/schema.ts` (or `schema.js`) and
-discovers object unions whose members have a required string-literal `kind`
-field. The discriminator can be changed globally with `--discriminator`.
+Project generation automatically loads `convex/schema.ts` (or `schema.js`).
+Every table document generates a shared `<TableName>Document` type, including
+its typed `_id` and `_creationTime` fields (named `id` and `creationTime` in Dart).
+Ordinary documents become record typedefs. Table-root object unions with a
+required string-literal `kind` become sealed document types:
+
+```dart
+sealed class SessionDocument { /* ... */ }
+final class Session extends SessionDocument { /* ... */ }
+final class Party extends SessionDocument { /* ... */ }
+```
+
+Queries returning the same complete document reuse that type in direct,
+nullable, list, and nested results, regardless of the containing field name.
+Matching uses the complete schema shape, so projections and enriched responses
+keep endpoint-specific result types. Regenerating existing project bindings
+renames complete-document result types to `<TableName>Document`; update callers
+to import those types from `types.dart` or the root `api.dart`.
+
+Nested schema object unions are also shared. Their field name supplies the base
+name, and they keep their existing naming convention without a `Document`
+suffix. The discriminator can be changed globally with `--discriminator`.
 
 ```ts
 category: v.union(
@@ -168,7 +187,8 @@ final class Cocktail extends Category {
 
 Dartvex recursively discovers unions at any object or array nesting depth.
 Using the same field name in multiple schema locations reuses one Dart type
-when the union structures are identical. Different structures using the same
+when the union structures are identical. Endpoint fields with a different name
+also reuse a uniquely matching schema union. Different structures using the same
 field name fail generation. Subclass names are global within `types.dart`, so
 discriminator values that normalize to the same Dart name also fail clearly.
 

@@ -4,7 +4,7 @@ import '../spec/schema_spec.dart';
 import 'discriminated_union.dart';
 import 'type_identity.dart';
 
-/// A shared discriminated union discovered from the Convex schema.
+/// A shared document or discriminated union discovered from the Convex schema.
 class SharedSchemaType {
   /// Creates shared schema type metadata.
   const SharedSchemaType({
@@ -12,12 +12,16 @@ class SharedSchemaType {
     required this.fieldName,
     required this.type,
     required this.paths,
+    this.isDocument = false,
   });
 
-  /// Generated sealed base class name.
+  /// Whether this type represents a complete table document.
+  final bool isDocument;
+
+  /// Generated record or sealed base class name.
   final String name;
 
-  /// Raw schema field name establishing semantic identity.
+  /// Raw schema field or table name establishing semantic identity.
   final String fieldName;
 
   /// Convex validator represented by this type.
@@ -27,16 +31,18 @@ class SharedSchemaType {
   final List<String> paths;
 }
 
-/// Discovers and resolves reusable schema-defined discriminated unions.
+/// Discovers and resolves reusable documents and schema-defined unions.
 class SchemaTypeRegistry {
   SchemaTypeRegistry._({
     required this.types,
     required Map<String, SharedSchemaType> byFieldAndIdentity,
     required Map<String, List<SharedSchemaType>> byIdentity,
+    required Map<String, SharedSchemaType> documentsByIdentity,
   }) : _byFieldAndIdentity = byFieldAndIdentity,
-       _byIdentity = byIdentity;
+       _byIdentity = byIdentity,
+       _documentsByIdentity = documentsByIdentity;
 
-  /// Builds a registry from every nested table field in [schema].
+  /// Builds a registry from table documents and nested union fields in [schema].
   factory SchemaTypeRegistry.fromSchema(
     SchemaSpec schema, {
     required String discriminator,
@@ -44,6 +50,7 @@ class SchemaTypeRegistry {
   }) {
     final byField = <String, SharedSchemaType>{};
     final subtypeOwners = <String, String>{};
+    final documents = <SharedSchemaType>[];
 
     void register(String fieldName, ConvexType type, String schemaPath) {
       final candidate = switch (type) {
@@ -116,12 +123,23 @@ class SchemaTypeRegistry {
     }
 
     for (final table in schema.tables) {
+      final documentType = _documentType(table.documentType, table.name);
+      if (documentType != null) {
+        documents.add(
+          SharedSchemaType(
+            name: '${naming.typeName(table.name)}Document',
+            fieldName: table.name,
+            type: documentType,
+            paths: <String>[table.name],
+            isDocument: true,
+          ),
+        );
+      }
       visit(table.documentType, null, table.name);
     }
 
-    final types =
-        byField.values.toList()
-          ..sort((left, right) => left.name.compareTo(right.name));
+    final types = <SharedSchemaType>[...byField.values, ...documents]
+      ..sort((left, right) => left.name.compareTo(right.name));
     final byFieldAndIdentity = <String, SharedSchemaType>{};
     final byIdentity = <String, List<SharedSchemaType>>{};
     for (final type in types) {
@@ -133,6 +151,10 @@ class SchemaTypeRegistry {
       types: types,
       byFieldAndIdentity: byFieldAndIdentity,
       byIdentity: byIdentity,
+      documentsByIdentity: {
+        for (final document in documents)
+          convexTypeIdentity(document.type): document,
+      },
     );
   }
 
@@ -141,12 +163,23 @@ class SchemaTypeRegistry {
 
   final Map<String, SharedSchemaType> _byFieldAndIdentity;
   final Map<String, List<SharedSchemaType>> _byIdentity;
+  final Map<String, SharedSchemaType> _documentsByIdentity;
 
-  /// Resolves [type], preferring its containing raw [fieldName].
+  /// Resolves complete documents, then named or uniquely matching field unions.
   SharedSchemaType? resolve(ConvexType type, {String? fieldName}) {
+    final nonNull =
+        type is ConvexUnionType
+            ? type.value.where((member) => !_isNullMember(member)).toList()
+            : <ConvexType>[type];
+    final documentCandidate =
+        nonNull.length == 1 ? nonNull.single : ConvexUnionType(nonNull);
+    final document =
+        _documentsByIdentity[convexTypeIdentity(documentCandidate)];
+    if (document != null) return document;
     final identity = convexTypeIdentity(type);
     if (fieldName != null) {
-      return _byFieldAndIdentity[_fieldIdentity(fieldName, identity)];
+      final named = _byFieldAndIdentity[_fieldIdentity(fieldName, identity)];
+      if (named != null) return named;
     }
     final matches = _byIdentity[identity];
     return matches?.length == 1 ? matches!.single : null;
@@ -154,6 +187,27 @@ class SchemaTypeRegistry {
 
   static String _fieldIdentity(String fieldName, String identity) =>
       '$fieldName\u0000$identity';
+}
+
+ConvexType? _documentType(ConvexType type, String tableName) {
+  if (type is ConvexObjectType) {
+    return ConvexObjectType({
+      ...type.value,
+      '_id': ConvexField(fieldType: ConvexIdType(tableName), optional: false),
+      '_creationTime': const ConvexField(
+        fieldType: ConvexNumberType(),
+        optional: false,
+      ),
+    });
+  }
+  if (type is ConvexUnionType) {
+    final members =
+        type.value.map((member) => _documentType(member, tableName)).toList();
+    if (members.every((member) => member != null)) {
+      return ConvexUnionType(members.cast<ConvexType>());
+    }
+  }
+  return null;
 }
 
 bool _isNullMember(ConvexType type) =>

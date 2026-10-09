@@ -160,6 +160,7 @@ class DartGenerator {
       naming: _naming,
       discriminator: discriminator,
       emitCodecs: false,
+      schemaTypes: registry,
     );
     final mapper = TypeMapper(naming: _naming);
     for (final sharedType in registry.types) {

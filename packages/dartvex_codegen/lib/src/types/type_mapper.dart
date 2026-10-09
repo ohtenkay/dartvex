@@ -189,13 +189,29 @@ class TypeMapper {
       );
       if (sharedType != null) {
         context.usedSharedTypeNames.add(sharedType.name);
-        return mapType(
-          type,
+        final mapped = mapType(
+          sharedType.type,
           suggestedName: sharedType.name,
           context: context,
           fieldName: fieldName,
           skipSharedType: true,
         );
+        if (sharedType.isDocument &&
+            type is ConvexUnionType &&
+            type.value.any(
+              (member) =>
+                  member is ConvexNullType ||
+                  member is ConvexLiteralType && member.value == null,
+            )) {
+          return MappedType(
+            dartType: DartNullableType(mapped.dartType),
+            encode: _nullableEncode(mapped.encode),
+            decode:
+                (expression) =>
+                    '$expression == null ? null : ${mapped.decode(expression)}',
+          );
+        }
+        return mapped;
       }
     }
     if (type is ConvexAnyType) {
