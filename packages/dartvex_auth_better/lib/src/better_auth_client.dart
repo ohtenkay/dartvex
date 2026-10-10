@@ -102,6 +102,73 @@ class BetterAuthClient {
         fallbackEmail: email);
   }
 
+  /// Signs in using an ID token obtained from a provider's native SDK.
+  ///
+  /// Configure [provider] (for example, `google`) in Better Auth's
+  /// `socialProviders`. Better Auth verifies [idToken] on the server.
+  Future<BetterAuthSession> signInSocial({
+    required String provider,
+    required String idToken,
+  }) async {
+    return _authenticate(
+      '/api/auth/sign-in/social',
+      {
+        'provider': provider,
+        'idToken': {'token': idToken},
+      },
+      fallbackEmail: '',
+    );
+  }
+
+  /// Reads email verification and password availability for a bearer session.
+  ///
+  /// Linked `credential` accounts are treated as password accounts, even
+  /// when a social provider is also linked.
+  Future<({bool emailVerified, bool hasPassword})> getAccountStatus({
+    required String sessionToken,
+  }) async {
+    final headers = {'Authorization': 'Bearer $sessionToken'};
+    final sessionResponse = await _http.get(
+      Uri.parse('$_siteUrl/api/auth/get-session'),
+      headers: headers,
+    );
+    final accountsResponse = await _http.get(
+      Uri.parse('$_siteUrl/api/auth/list-accounts'),
+      headers: headers,
+    );
+    for (final response in [sessionResponse, accountsResponse]) {
+      if (response.statusCode != 200) {
+        throw BetterAuthException(
+          'Better Auth account status failed (status ${response.statusCode})'
+          '${_responseMessageDetail(response.body)}',
+          retryable: response.statusCode >= 500,
+        );
+      }
+      _throwIfErrorBody('account status', response.body);
+    }
+    final session = _decodeObjectBody('/api/auth/get-session', sessionResponse);
+    final user = _asObject(session['user']);
+    Object? accounts;
+    try {
+      accounts = jsonDecode(accountsResponse.body);
+    } on FormatException {
+      throw const BetterAuthException(
+          'Better Auth accounts were not valid JSON.');
+    }
+    if (user?['emailVerified'] is! bool ||
+        accounts is! List ||
+        accounts
+            .any((account) => _asObject(account)?['providerId'] is! String)) {
+      throw const BetterAuthException(
+          'Better Auth returned invalid account status.');
+    }
+    return (
+      emailVerified: user!['emailVerified'] as bool,
+      hasPassword: accounts
+          .any((account) => _asObject(account)!['providerId'] == 'credential'),
+    );
+  }
+
   /// Sends a password reset email.
   Future<void> forgotPassword({
     required String email,

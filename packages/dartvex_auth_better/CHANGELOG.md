@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added (fork)
 
+- `BetterAuthClient.signInSocial()` exchanges a native provider ID token for
+  a Better Auth session using the existing session/JWT handling.
+- `BetterAuthClient.getAccountStatus()` reads email verification and linked
+  password-account status with bearer authentication.
+- `ConvexBetterAuthProvider.setSession()` adopts social or magic-link sessions
+  for `loginFromCache()`, token refresh, and logout.
+
 - `BetterAuthClient.changePassword()` changes an authenticated user's password
   using the existing bearer session. Sessions stay valid by default; optional
   session revocation returns the replacement token for restoring authentication.

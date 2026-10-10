@@ -22,6 +22,8 @@ a fork of [AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
 Adds authenticated password changes with optional session revocation. See
 [change password](#6-change-password-fork-addition) and the
 [Unreleased changelog](CHANGELOG.md#unreleased).
+Also supports native social ID-token sign-in, adopting external sessions, and
+reading account verification/password status.
 
 The pub.dev installation examples below refer to upstream releases. Use this
 checkout or Git dependencies pinned to a fork commit for fork additions, keeping
@@ -202,10 +204,36 @@ final session = await authClient.verifyMagicLink(token: magicLinkToken);
 
 ## API Overview
 
+### Native social sign-in (fork addition)
+
+Obtain an ID token from the provider's native SDK, then exchange it with Better
+Auth. Configure the provider and its accepted client IDs on the server; this
+package does not depend on a native provider SDK.
+
+```dart
+final session = await authClient.signInSocial(
+  provider: 'google',
+  idToken: googleIdToken,
+);
+provider.setSession(session);
+await authedClient.loginFromCache();
+
+final status = await authClient.getAccountStatus(
+  sessionToken: session.sessionToken,
+);
+// status.emailVerified / status.hasPassword
+```
+
+`setSession()` also accepts sessions returned by `verifyMagicLink()`. It clears
+previous email/password credentials and pending sign-up state. Session restore,
+automatic refresh, and logout use the adopted Better Auth session token.
+
 ### BetterAuthClient
 
 - `signUp({name, email, password})` — create account, returns `BetterAuthSession`
 - `signIn({email, password})` — authenticate, returns `BetterAuthSession`
+- **(fork addition)** `signInSocial({provider, idToken})` — exchange a native provider ID token for a session
+- **(fork addition)** `getAccountStatus({sessionToken})` — read email verification and password-account status
 - `forgotPassword({email, redirectTo?})` — send password reset email
 - `resetPassword({token, newPassword})` — confirm password reset
 - **(fork addition)** `changePassword({sessionToken, currentPassword, newPassword, revokeOtherSessions?})` — change password; returns a replacement session token when revoking sessions
@@ -224,6 +252,7 @@ Implements `AuthProvider<BetterAuthSession>` from `dartvex`:
 - `login()` — sign in with stored email/password
 - `loginFromCache()` — restore session from the cached (or seeded) token
 - `logout()` — sign out and clear cache
+- **(fork addition)** `setSession(session)` — adopt a social or magic-link session before `loginFromCache()`
 - `signUp({name, email, password, onIdToken})` — create account and
   authenticate, reporting the Convex JWT through `onIdToken`
 

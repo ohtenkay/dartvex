@@ -441,6 +441,47 @@ void main() {
       );
     });
 
+    test(
+        'setSession replaces pending sign-up state and supports refresh and logout',
+        () async {
+      final requests = <http.Request>[];
+      final client = BetterAuthClient(
+          baseUrl: baseUrl,
+          httpClient: buildMock(
+            onRequest: requests.add,
+          ));
+      final provider = ConvexBetterAuthProvider(client: client);
+      await provider.signUp(
+          name: 'Alice',
+          email: 'alice@example.com',
+          password: 'password123',
+          onIdToken: (_) {});
+      const socialSession = BetterAuthSession(
+          token: 'google-jwt',
+          sessionToken: 'google-session',
+          userId: 'u1',
+          email: 'alice@example.com');
+      provider.setSession(socialSession);
+      expect(provider.cachedSession, same(socialSession));
+      expect(provider.email, isNull);
+      expect(provider.password, isNull);
+      await expectLater(provider.login(onIdToken: (_) {}), throwsStateError);
+      String? receivedToken;
+      await provider.loginFromCache(
+          onIdToken: (token) => receivedToken = token);
+      expect(receivedToken, 'jwt_mock');
+      final refresh =
+          requests.firstWhere((r) => r.url.path == '/api/auth/get-session');
+      expect(refresh.headers['Authorization'], 'Bearer google-session');
+      await provider.logout();
+      final logout =
+          requests.firstWhere((r) => r.url.path == '/api/auth/sign-out');
+      expect(logout.headers['Authorization'], 'Bearer google-session');
+      expect(provider.cachedSession, isNull);
+      await expectLater(
+          provider.loginFromCache(onIdToken: (_) {}), throwsStateError);
+    });
+
     test('extractIdToken returns the JWT', () {
       final mock = buildMock();
       final client = BetterAuthClient(baseUrl: baseUrl, httpClient: mock);
