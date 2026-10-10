@@ -131,6 +131,19 @@ class ConvexBetterAuthProvider implements AuthProvider<BetterAuthSession> {
   /// The currently cached session, if any.
   BetterAuthSession? get cachedSession => _cachedSession;
 
+  /// Adopts a session created by social sign-in or magic-link verification.
+  ///
+  /// Call the authenticated Convex client's `loginFromCache()` afterwards
+  /// to connect it and enable automatic token refresh. This clears any saved
+  /// email/password credentials and pending sign-up session.
+  void setSession(BetterAuthSession session) {
+    _clearPendingLoginSession();
+    email = null;
+    password = null;
+    _cachedSession = session;
+    _sessionToken = session.sessionToken;
+  }
+
   BetterAuthSession? _takePendingLoginSession({
     required String email,
     required String password,

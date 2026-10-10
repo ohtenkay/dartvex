@@ -39,6 +39,8 @@ This is [ohtenkay/dartvex](https://github.com/ohtenkay/dartvex), a fork of
   [Flutter guide](packages/dartvex_flutter/README.md#latest-value-mutations-fork-addition).
 - **Authenticated password changes** —
   [auth guide](packages/dartvex_auth_better/README.md#6-change-password-fork-addition).
+- **Native social sign-in and session adoption** —
+  [auth guide](packages/dartvex_auth_better/README.md#native-social-sign-in-fork-addition).
 - **Minimal Nix development environment** — [development setup](#development-setup-fork-addition).
 
 Fork changes are unreleased. The pub.dev versions and badges below refer to
