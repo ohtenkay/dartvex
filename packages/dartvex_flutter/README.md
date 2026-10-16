@@ -237,7 +237,24 @@ pass the returned URL to `Image.network`.
 
 ## Pagination
 
-`PaginatedQueryBuilder` is backed by the core reactive pagination engine: loaded
+Generated paginated query widgets use `ConvexTypedPaginatedQuery<Args, Item>`
+and a generated `ConvexPaginatedQueryReference`. They accept typed filters,
+`pageSize`, and an optional client override. Their builder receives
+`(context, items, loadMore, status)` with accumulated, typed items. The default
+constructor supplies initial loading/error UI; `waitingBuilder` and
+`errorBuilder` customize it. Later-page errors keep the loaded list visible.
+
+The `.snapshot` constructor instead calls
+`(context, ConvexPaginatedQuerySnapshot<Item> snapshot, loadMore)` on every
+state. The snapshot contains `items`, `status`, `isDone`, and `error`, including
+backend, stream, and decoding failures. Changing filters, page size, query name,
+or client resets pagination; unmounting cancels it. The app supplies scroll
+listeners or a button that calls `loadMore`. Calls while loading, exhausted,
+or errored retain the existing engine's no-op behavior; no retry API is added.
+See the [generated example](../dartvex_codegen/README.md#generated-flutter-widgets-fork-addition).
+
+`PaginatedQueryBuilder` remains available with its existing map decoder API.
+Both widgets share lifecycle handling backed by the core reactive pagination engine: loaded
 pages update live as their data changes and stay gapless at page boundaries. Its
 public API (`query` / `builder` / `fromJson` / `args` / `pageSize` / `client`)
 and `PaginationStatus` are unchanged.

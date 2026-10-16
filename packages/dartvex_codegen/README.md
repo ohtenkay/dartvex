@@ -82,7 +82,7 @@ dart run dartvex_codegen generate \
 Useful flags:
 
 - `--client-import package:dartvex/dartvex.dart`
-- `--flutter-widgets` **(fork addition)** generates `widgets.dart` with a typed widget for every public mutation and non-paginated query. Add `dartvex_flutter` and Flutter to the consuming app.
+- `--flutter-widgets` **(fork addition)** generates `widgets.dart` with a typed widget for every public mutation and query, including standard paginated queries. Add `dartvex_flutter` and Flutter to the consuming app.
 - `--discriminator kind` **(fork addition)**
 - `--dry-run`
 - `--verbose`
@@ -104,8 +104,50 @@ that can read and update generated query references without raw maps.
 data, with default loading and error UI. Use `waitingBuilder` or `errorBuilder`
 to replace those states, or the `.snapshot` constructor to handle every state
 and its metadata. Query widgets accept named arguments and manage their
-subscriptions automatically. Paginated queries continue to use the generated
-pagination API.
+subscriptions automatically.
+
+Standard paginated queries generate the same `<Module><Function>Query` widget
+name, backed by `ConvexTypedPaginatedQuery`. Detection uses the existing
+`paginationOpts` argument and `page` / `isDone` / `continueCursor` result contract;
+queries without a return validator retain the map-item fallback. The generated
+widget accepts typed filter arguments and `pageSize` (default 20), and manages
+cursors internally:
+
+```dart
+MessagesPaginatePublicQuery(
+  channel: const Optional.of('general'),
+  pageSize: 20,
+  builder: (context, items, loadMore, status) => ListView.builder(
+    itemCount: items.length + (status == PaginationStatus.allLoaded ? 0 : 1),
+    itemBuilder: (context, index) {
+      if (index < items.length) return Text(items[index].text);
+      if (status == PaginationStatus.error) {
+        return const Text('Could not load more messages.');
+      }
+      return TextButton(
+        onPressed: status == PaginationStatus.idle ? loadMore : null,
+        child: const Text('Load more'),
+      );
+    },
+  ),
+)
+```
+
+The default constructor handles initial loading and errors with optional
+`waitingBuilder` / `errorBuilder` overrides. Later-page errors preserve loaded
+items and reach the builder with `PaginationStatus.error`. Use `.snapshot` with
+`snapshotBuilder: (context, snapshot, loadMore) => ...` for every state and the
+original error. `ConvexPaginatedQuerySnapshot<T>` exposes `items`, `status`,
+`isDone`, and `error`. Filter, page-size, or client changes reset pagination;
+ordinary rebuilds retain loaded pages. The application controls scroll detection
+or a load-more button. This adds no retry semantics: `loadMore` remains a no-op
+while loading, exhausted, or errored, as in the existing engine.
+
+The generator also exposes `<function>PaginatedQueryReference` metadata and an
+API `<function>PaginatedQuery` getter with a `ConvexPaginatedQueryReference`
+containing typed argument encoding and item decoding. Existing typed pagination
+methods remain available. Use matching core, Flutter, and codegen fork revisions.
+Custom cursor/result contracts continue to generate ordinary query widgets.
 
 ### Exported spec hygiene
 

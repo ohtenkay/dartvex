@@ -30,7 +30,7 @@ This is [ohtenkay/dartvex](https://github.com/ohtenkay/dartvex), a fork of
 - **Shared table documents and schema-derived sealed unions** with reusable
   `<TableName>Document` types and a configurable
   discriminator — [codegen guide](packages/dartvex_codegen/README.md#schema-derived-discriminated-unions-fork-addition).
-- **Generated typed Flutter query and mutation widgets**, default loading/error
+- **Generated typed Flutter query, paginated query, and mutation widgets**, default loading/error
   UI, and mutation executors with `run(...)` and success callbacks —
   [codegen guide](packages/dartvex_codegen/README.md#generated-flutter-widgets-fork-addition).
 - **Typed optimistic query updates** and replaceable local optimistic layers —

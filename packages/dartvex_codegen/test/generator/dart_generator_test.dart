@@ -613,6 +613,180 @@ Future<void> main() async {
       );
     });
 
+    test(
+      'generates pagination widgets, snapshots, codecs and barrel exports',
+      () {
+        final output = DartGenerator(
+          generateFlutterWidgets: true,
+        ).generate(spec);
+        final widgets = output.files['widgets/messages.dart']!;
+        expect(widgets, contains('class MessagesPaginatePublicQuery'));
+        expect(
+          widgets,
+          contains('const MessagesPaginatePublicQuery.snapshot('),
+        );
+        expect(widgets, contains('this.channel = const Optional.absent()'));
+        expect(widgets, contains('this.pageSize = 20'));
+        expect(
+          widgets,
+          contains('PaginatedQueryWidgetBuilder<PaginatePublicPageItem>'),
+        );
+        expect(
+          widgets,
+          contains('ConvexPaginatedQuerySnapshot<PaginatePublicPageItem>'),
+        );
+        expect(
+          widgets,
+          contains('query: paginatePublicPaginatedQueryReference'),
+        );
+        expect(widgets, contains('ConvexTypedPaginatedQuery<'));
+        expect(widgets, isNot(contains('paginationOpts')));
+        expect(
+          output.files['widgets.dart'],
+          contains("export 'widgets/messages.dart'"),
+        );
+        expect(
+          output.files['modules/messages.dart'],
+          contains(
+            'ConvexPaginatedQueryReference<PaginatePublicArgs, PaginatePublicPageItem>',
+          ),
+        );
+      },
+    );
+
+    test(
+      'pagination-only modules support scalar, union and colliding arguments',
+      () async {
+        const field = ConvexField(
+          fieldType: ConvexStringType(),
+          optional: false,
+        );
+        const args = ConvexObjectType({
+          'paginationOpts': ConvexField(
+            fieldType: ConvexAnyType(),
+            optional: false,
+          ),
+          'builder': field,
+          'client': field,
+          'query_builder': field,
+        });
+        ConvexType page(ConvexType item) => ConvexObjectType({
+          'page': ConvexField(
+            fieldType: ConvexArrayType(item),
+            optional: false,
+          ),
+          'isDone': const ConvexField(
+            fieldType: ConvexBooleanType(),
+            optional: false,
+          ),
+          'continueCursor': field,
+        });
+        final union = ConvexUnionType([
+          const ConvexObjectType({
+            'kind': ConvexField(
+              fieldType: ConvexLiteralType('text'),
+              optional: false,
+            ),
+            'text': field,
+          }),
+          const ConvexObjectType({
+            'kind': ConvexField(
+              fieldType: ConvexLiteralType('image'),
+              optional: false,
+            ),
+            'url': field,
+          }),
+        ]);
+        final output = DartGenerator(generateFlutterWidgets: true).generate(
+          FunctionsSpec(
+            url: 'https://sample.convex.cloud',
+            functions: [
+              _function(
+                identifier: 'feed.ts:numbers',
+                functionType: 'Query',
+                args: args,
+                returns: page(const ConvexNumberType()),
+              ),
+              _function(
+                identifier: 'feed.ts:events',
+                functionType: 'Query',
+                args: args,
+                returns: page(union),
+              ),
+            ],
+          ),
+        );
+        final widgets = output.files['widgets/feed.dart']!;
+        expect(
+          output.files['widgets.dart'],
+          contains("export 'widgets/feed.dart'"),
+        );
+        expect(widgets, contains('PaginatedQueryWidgetBuilder<double>'));
+        expect(
+          widgets,
+          contains('PaginatedQueryWidgetBuilder<EventsPageItem>'),
+        );
+        expect(widgets, contains('required this.queryBuilder'));
+        expect(widgets, contains('required this.queryClient'));
+        expect(widgets, contains('required this.queryQueryBuilder'));
+        expect(widgets, contains('builder: queryBuilder'));
+        final module = output.files['modules/feed.dart']!;
+        expect(module, contains('sealed class EventsPageItem'));
+        expect(
+          module,
+          contains(
+            "decodeItem: (raw) => expectDouble(raw, label: 'NumbersPageItem')",
+          ),
+        );
+        final directory = await Directory.systemTemp.createTemp(
+          'dartvex_pages_',
+        );
+        addTearDown(() => directory.delete(recursive: true));
+        for (final entry in output.files.entries) {
+          final file = File(path.join(directory.path, entry.key));
+          await file.parent.create(recursive: true);
+          await file.writeAsString(entry.value);
+        }
+        final script = File(path.join(directory.path, 'check.dart'));
+        await script.writeAsString('''
+import 'dart:convert';
+import 'modules/feed.dart';
+void check(bool value) { if (!value) throw StateError('Check failed'); }
+void main() {
+  check(numbersPaginatedQueryReference.decodeItem(42) == 42.0);
+  final encoded = numbersPaginatedQueryReference.encode((builder: 'b', client: 'c', queryBuilder: 'q'));
+  check(jsonEncode(encoded) == jsonEncode({'builder': 'b', 'client': 'c', 'query_builder': 'q'}));
+  check(eventsPaginatedQueryReference.decodeItem({'kind': 'text', 'text': 'hello'}).isText);
+  check(eventsPaginatedQueryReference.decodeItem({'kind': 'image', 'url': 'url'}).isImage);
+}
+''');
+        final result = await Process.run(Platform.resolvedExecutable, [
+          '--packages=${path.absolute('.dart_tool/package_config.json')}',
+          script.path,
+        ]);
+        expect(
+          result.exitCode,
+          0,
+          reason: '${result.stdout}\n${result.stderr}',
+        );
+      },
+    );
+
+    test('pagination reference getters cannot collide with function names', () {
+      expect(
+        () => DartGenerator().generate(
+          FunctionsSpec(
+            url: spec.url,
+            functions: [
+              ...spec.functions,
+              _function(identifier: 'messages.ts:paginatePublicPaginatedQuery'),
+            ],
+          ),
+        ),
+        throwsA(isA<NamingException>()),
+      );
+    });
+
     test('demotes a paginated query whose argument collides with pageSize', () {
       const paginationOpts = ConvexField(
         fieldType: ConvexObjectType(<String, ConvexField>{
