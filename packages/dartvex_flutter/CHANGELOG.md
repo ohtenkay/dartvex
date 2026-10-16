@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added (fork)
 
+- `ConvexTypedPaginatedQuery` and `ConvexPaginatedQuerySnapshot` support
+  generated paginated widgets with typed items, default initial loading/error
+  UI, and snapshot access to errors. Existing `PaginatedQueryBuilder` shares
+  the lifecycle implementation and keeps its public API.
+
 - `ConvexTypedQuery` uses generated references and typed arguments/results,
   with default loading/error UI, overrides, and a snapshot constructor.
 - Typed optimistic callbacks bind mutation arguments and stable invocation

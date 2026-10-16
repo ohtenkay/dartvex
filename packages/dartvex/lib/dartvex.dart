@@ -23,7 +23,8 @@ export 'src/exceptions.dart'
     show ConvexException, ConvexFileUploadException, ConvexStorageException;
 export 'src/logging.dart' show DartvexLogEvent, DartvexLogger, DartvexLogLevel;
 export 'src/mutation.dart' show ConvexMutationReference, NoArgs;
-export 'src/query.dart' show ConvexQueryReference;
+export 'src/query.dart'
+    show ConvexQueryReference, ConvexPaginatedQueryReference;
 export 'src/storage.dart' show ConvexStorage;
 export 'src/sync/optimistic_updates.dart'
     show

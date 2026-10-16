@@ -154,6 +154,154 @@ class MessagesListQuery extends StatelessWidget {
   }
 }
 
+/// Flutter widget for the paginated messages:paginatePublic query.
+class MessagesPaginatePublicQuery extends StatelessWidget {
+  /// Creates a typed paginated query with default initial loading/error UI.
+  const MessagesPaginatePublicQuery({
+    super.key,
+    required this.builder,
+    this.client,
+    this.pageSize = 20,
+    this.waitingBuilder,
+    this.errorBuilder,
+    this.channel = const Optional.absent(),
+  }) : snapshotBuilder = null;
+
+  /// Creates a paginated query whose builder handles every snapshot state.
+  const MessagesPaginatePublicQuery.snapshot({
+    super.key,
+    required this.snapshotBuilder,
+    this.client,
+    this.pageSize = 20,
+    this.channel = const Optional.absent(),
+  }) : builder = null,
+       waitingBuilder = null,
+       errorBuilder = null;
+
+  /// Builds accumulated items and controls for loading more pages.
+  final PaginatedQueryWidgetBuilder<PaginatePublicPageItem>? builder;
+
+  /// Builds every state, including errors with their original details.
+  final Widget Function(
+    BuildContext,
+    ConvexPaginatedQuerySnapshot<PaginatePublicPageItem>,
+    VoidCallback,
+  )?
+  snapshotBuilder;
+
+  /// Optional runtime client override.
+  final ConvexRuntimeClient? client;
+
+  /// Number of items requested per page.
+  final int pageSize;
+
+  /// Overrides the initial loading UI.
+  final WidgetBuilder? waitingBuilder;
+
+  /// Overrides error UI when no items are available.
+  final Widget Function(BuildContext, Object)? errorBuilder;
+
+  final Optional<String> channel;
+
+  @override
+  Widget build(BuildContext context) {
+    final buildSnapshot$ = snapshotBuilder;
+    if (buildSnapshot$ != null) {
+      return ConvexTypedPaginatedQuery<
+        PaginatePublicArgs,
+        PaginatePublicPageItem
+      >.snapshot(
+        query: paginatePublicPaginatedQueryReference,
+        args: (channel: channel),
+        pageSize: pageSize,
+        client: client,
+        snapshotBuilder: buildSnapshot$,
+      );
+    }
+    return ConvexTypedPaginatedQuery<
+      PaginatePublicArgs,
+      PaginatePublicPageItem
+    >(
+      query: paginatePublicPaginatedQueryReference,
+      args: (channel: channel),
+      pageSize: pageSize,
+      client: client,
+      builder: builder!,
+      waitingBuilder: waitingBuilder,
+      errorBuilder: errorBuilder,
+    );
+  }
+}
+
+/// Flutter widget for the paginated messages:paginateRaw query.
+class MessagesPaginateRawQuery extends StatelessWidget {
+  /// Creates a typed paginated query with default initial loading/error UI.
+  const MessagesPaginateRawQuery({
+    super.key,
+    required this.builder,
+    this.client,
+    this.pageSize = 20,
+    this.waitingBuilder,
+    this.errorBuilder,
+  }) : snapshotBuilder = null;
+
+  /// Creates a paginated query whose builder handles every snapshot state.
+  const MessagesPaginateRawQuery.snapshot({
+    super.key,
+    required this.snapshotBuilder,
+    this.client,
+    this.pageSize = 20,
+  }) : builder = null,
+       waitingBuilder = null,
+       errorBuilder = null;
+
+  /// Builds accumulated items and controls for loading more pages.
+  final PaginatedQueryWidgetBuilder<Map<String, dynamic>>? builder;
+
+  /// Builds every state, including errors with their original details.
+  final Widget Function(
+    BuildContext,
+    ConvexPaginatedQuerySnapshot<Map<String, dynamic>>,
+    VoidCallback,
+  )?
+  snapshotBuilder;
+
+  /// Optional runtime client override.
+  final ConvexRuntimeClient? client;
+
+  /// Number of items requested per page.
+  final int pageSize;
+
+  /// Overrides the initial loading UI.
+  final WidgetBuilder? waitingBuilder;
+
+  /// Overrides error UI when no items are available.
+  final Widget Function(BuildContext, Object)? errorBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    final buildSnapshot$ = snapshotBuilder;
+    if (buildSnapshot$ != null) {
+      return ConvexTypedPaginatedQuery<NoArgs, Map<String, dynamic>>.snapshot(
+        query: paginateRawPaginatedQueryReference,
+        args: const NoArgs(),
+        pageSize: pageSize,
+        client: client,
+        snapshotBuilder: buildSnapshot$,
+      );
+    }
+    return ConvexTypedPaginatedQuery<NoArgs, Map<String, dynamic>>(
+      query: paginateRawPaginatedQueryReference,
+      args: const NoArgs(),
+      pageSize: pageSize,
+      client: client,
+      builder: builder!,
+      waitingBuilder: waitingBuilder,
+      errorBuilder: errorBuilder,
+    );
+  }
+}
+
 /// Flutter widget for messages:ping.
 class MessagesPingQuery extends StatelessWidget {
   /// Creates a typed query widget with default loading and error UI.
@@ -208,6 +356,82 @@ class MessagesPingQuery extends StatelessWidget {
     return ConvexTypedQuery<Map<String, dynamic>, dynamic>(
       query: pingQueryReference,
       args: args,
+      client: client,
+      builder: builder!,
+      waitingBuilder: waitingBuilder,
+      errorBuilder: errorBuilder,
+    );
+  }
+}
+
+/// Flutter widget for the paginated messages:searchPublic query.
+class MessagesSearchPublicQuery extends StatelessWidget {
+  /// Creates a typed paginated query with default initial loading/error UI.
+  const MessagesSearchPublicQuery({
+    super.key,
+    required this.builder,
+    this.client,
+    this.pageSize = 20,
+    this.waitingBuilder,
+    this.errorBuilder,
+    required this.query,
+  }) : snapshotBuilder = null;
+
+  /// Creates a paginated query whose builder handles every snapshot state.
+  const MessagesSearchPublicQuery.snapshot({
+    super.key,
+    required this.snapshotBuilder,
+    this.client,
+    this.pageSize = 20,
+    required this.query,
+  }) : builder = null,
+       waitingBuilder = null,
+       errorBuilder = null;
+
+  /// Builds accumulated items and controls for loading more pages.
+  final PaginatedQueryWidgetBuilder<Map<String, dynamic>>? builder;
+
+  /// Builds every state, including errors with their original details.
+  final Widget Function(
+    BuildContext,
+    ConvexPaginatedQuerySnapshot<Map<String, dynamic>>,
+    VoidCallback,
+  )?
+  snapshotBuilder;
+
+  /// Optional runtime client override.
+  final ConvexRuntimeClient? client;
+
+  /// Number of items requested per page.
+  final int pageSize;
+
+  /// Overrides the initial loading UI.
+  final WidgetBuilder? waitingBuilder;
+
+  /// Overrides error UI when no items are available.
+  final Widget Function(BuildContext, Object)? errorBuilder;
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    final buildSnapshot$ = snapshotBuilder;
+    if (buildSnapshot$ != null) {
+      return ConvexTypedPaginatedQuery<
+        SearchPublicArgs,
+        Map<String, dynamic>
+      >.snapshot(
+        query: searchPublicPaginatedQueryReference,
+        args: (query: query),
+        pageSize: pageSize,
+        client: client,
+        snapshotBuilder: buildSnapshot$,
+      );
+    }
+    return ConvexTypedPaginatedQuery<SearchPublicArgs, Map<String, dynamic>>(
+      query: searchPublicPaginatedQueryReference,
+      args: (query: query),
+      pageSize: pageSize,
       client: client,
       builder: builder!,
       waitingBuilder: waitingBuilder,

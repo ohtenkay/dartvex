@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added (fork)
 
+- Generate typed Flutter widgets for standard paginated queries, with filter
+  arguments, page-size controls, accumulated items, and snapshot/error access.
+  Paginated references share codecs with the Flutter runtime.
+
 - Discriminated union bases expose abstract getters for fields whose validator
   types and optionality match in every variant, and `is<Variant>` boolean
   predicates. Predicate/schema-field name collisions fail generation clearly.

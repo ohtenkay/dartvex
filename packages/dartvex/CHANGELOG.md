@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added (fork)
 
+- `ConvexPaginatedQueryReference<Args, Item>` shares generated filter encoding
+  and page-item decoding between typed APIs and Flutter widgets.
+
 - Typed query and mutation references with wire codecs, plus `NoArgs` for
   zero-argument functions.
 - `TypedOptimisticLocalStore`, typed optimistic callbacks, and invocation

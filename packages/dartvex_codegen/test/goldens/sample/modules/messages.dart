@@ -79,6 +79,9 @@ class MessagesApi {
     );
   }
 
+  ConvexPaginatedQueryReference<PaginatePublicArgs, PaginatePublicPageItem>
+  get paginatePublicPaginatedQuery => paginatePublicPaginatedQueryReference;
+
   TypedConvexPaginatedQuery<Map<String, dynamic>> paginateRaw({
     int pageSize = 20,
   }) {
@@ -91,6 +94,9 @@ class MessagesApi {
       (dynamic raw) => expectMap(raw, label: 'PaginateRawPageItem'),
     );
   }
+
+  ConvexPaginatedQueryReference<NoArgs, Map<String, dynamic>>
+  get paginateRawPaginatedQuery => paginateRawPaginatedQueryReference;
 
   Future<dynamic> ping([
     Map<String, dynamic> args = const <String, dynamic>{},
@@ -134,6 +140,9 @@ class MessagesApi {
       (dynamic raw) => expectMap(raw, label: 'SearchPublicPageItem'),
     );
   }
+
+  ConvexPaginatedQueryReference<SearchPublicArgs, Map<String, dynamic>>
+  get searchPublicPaginatedQuery => searchPublicPaginatedQueryReference;
 
   Future<MessagesId> send({
     required String author,
@@ -294,6 +303,41 @@ PaginatePublicPageItem _decodePaginatePublicPageItem(dynamic raw) {
   );
 }
 
+typedef PaginatePublicArgs = ({Optional<String> channel});
+
+Map<String, dynamic> _encodePaginatePublicArgs(PaginatePublicArgs value$) {
+  final (channel: channel) = value$;
+  return <String, dynamic>{if (channel.isDefined) 'channel': channel.value};
+}
+
+PaginatePublicArgs _decodePaginatePublicArgs(dynamic raw) {
+  final map = expectMap(raw, label: 'PaginatePublicArgs');
+  return (
+    channel: map.containsKey('channel')
+        ? Optional.of(
+            expectString(map['channel'], label: 'PaginatePublicArgsChannel'),
+          )
+        : const Optional.absent(),
+  );
+}
+
+typedef SearchPublicArgs = ({String query});
+
+Map<String, dynamic> _encodeSearchPublicArgs(SearchPublicArgs value$) {
+  final (query: query) = value$;
+  return <String, dynamic>{'query': query};
+}
+
+SearchPublicArgs _decodeSearchPublicArgs(dynamic raw) {
+  final map = expectMap(raw, label: 'SearchPublicArgs');
+  if (!map.containsKey('query')) {
+    throw FormatException(
+      'Missing required field "query" for SearchPublicArgs',
+    );
+  }
+  return (query: expectString(map['query'], label: 'SearchPublicArgsQuery'));
+}
+
 typedef SendArgs = ({
   String author,
   String text,
@@ -341,6 +385,20 @@ final ConvexQueryReference<ListArgs, List<ListResultItem>> listQueryReference =
           value.map((item) => _encodeListResultItem(item)).toList(),
     );
 
+final ConvexPaginatedQueryReference<PaginatePublicArgs, PaginatePublicPageItem>
+paginatePublicPaginatedQueryReference = ConvexPaginatedQueryReference(
+  name: 'messages:paginatePublic',
+  encode: (args) => _encodePaginatePublicArgs(args),
+  decodeItem: (raw) => _decodePaginatePublicPageItem(raw),
+);
+
+final ConvexPaginatedQueryReference<NoArgs, Map<String, dynamic>>
+paginateRawPaginatedQueryReference = ConvexPaginatedQueryReference(
+  name: 'messages:paginateRaw',
+  encode: (args) => const <String, dynamic>{},
+  decodeItem: (raw) => expectMap(raw, label: 'PaginateRawPageItem'),
+);
+
 final ConvexQueryReference<Map<String, dynamic>, dynamic> pingQueryReference =
     ConvexQueryReference(
       name: 'messages:ping',
@@ -349,6 +407,13 @@ final ConvexQueryReference<Map<String, dynamic>, dynamic> pingQueryReference =
       decode: (raw) => raw,
       encodeResult: (value) => value,
     );
+
+final ConvexPaginatedQueryReference<SearchPublicArgs, Map<String, dynamic>>
+searchPublicPaginatedQueryReference = ConvexPaginatedQueryReference(
+  name: 'messages:searchPublic',
+  encode: (args) => _encodeSearchPublicArgs(args),
+  decodeItem: (raw) => expectMap(raw, label: 'SearchPublicPageItem'),
+);
 
 final ConvexMutationReference<SendArgs, MessagesId> sendMutationReference =
     ConvexMutationReference(
