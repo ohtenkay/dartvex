@@ -206,11 +206,14 @@ final class Cocktail extends Category {
 ```
 
 Dartvex recursively discovers unions at any object or array nesting depth.
-Using the same field name in multiple schema locations reuses one Dart type
-when the union structures are identical. Endpoint fields with a different name
-also reuse a uniquely matching schema union. Different structures using the same
-field name fail generation. Subclass names are global within `types.dart`, so
-discriminator values that normalize to the same Dart name also fail clearly.
+Identical union structures reuse one Dart type across schema fields, even when
+their names differ (for example, `slotA` and `slotB`). The first field encountered
+in schema traversal supplies the shared base name; both fields use that type.
+Union member and object field ordering do not affect structural matching.
+Endpoint fields with a different name also reuse a uniquely matching schema
+union. Different structures using the same field name fail generation.
+Subclass names are global within `types.dart`, so incompatible unions whose
+discriminator values normalize to the same Dart name still fail clearly.
 
 Project generation requires the backend's installed `esbuild` and Convex
 dependencies. Generation from only `--spec-file` has no local schema and

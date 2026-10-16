@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed (fork)
 
+- Identical schema discriminated unions under different field names now reuse
+  one shared sealed type, named after the first field encountered. This fixes
+  duplicate subtype errors for fields such as `slotA` and `slotB`; incompatible
+  unions still fail with a naming collision.
+
 - Returning the same discriminated table document from multiple endpoints no
   longer generates colliding variant class names.
 - Endpoint fields with different names reuse uniquely matching schema unions,

@@ -112,6 +112,161 @@ void main() {
     );
   });
 
+  test('shares differently named fields and resolves every alias', () {
+    final registry = SchemaTypeRegistry.fromSchema(
+      const SchemaSpec(
+        tables: [
+          SchemaTableSpec(
+            name: 'matches',
+            documentType: ConvexObjectType({
+              'slotA': ConvexField(fieldType: category, optional: false),
+              'slotB': ConvexField(
+                fieldType: reorderedCategory,
+                optional: false,
+              ),
+              'history': ConvexField(
+                fieldType: ConvexArrayType(
+                  ConvexObjectType({
+                    'previousSlot': ConvexField(
+                      fieldType: category,
+                      optional: false,
+                    ),
+                    'slotB': ConvexField(fieldType: category, optional: false),
+                  }),
+                ),
+                optional: false,
+              ),
+            }),
+          ),
+        ],
+      ),
+      discriminator: 'kind',
+    );
+    final shared = registry.types.singleWhere((type) => !type.isDocument);
+    expect(shared.name, 'SlotA');
+    expect(shared.paths, [
+      'matches.slotA',
+      'matches.slotB',
+      'matches.history[].previousSlot',
+      'matches.history[].slotB',
+    ]);
+    for (final name in ['slotA', 'slotB', 'previousSlot', 'endpointSlot']) {
+      expect(
+        registry.resolve(reorderedCategory, fieldName: name),
+        same(shared),
+      );
+    }
+    expect(registry.resolve(category), same(shared));
+  });
+
+  test('reuses identical nullable unions under different field names', () {
+    final nullable = ConvexUnionType([
+      ...category.value,
+      const ConvexNullType(),
+    ]);
+    final registry = SchemaTypeRegistry.fromSchema(
+      SchemaSpec(
+        tables: [
+          SchemaTableSpec(
+            name: 'matches',
+            documentType: ConvexObjectType({
+              'slotA': ConvexField(fieldType: nullable, optional: false),
+              'slotB': ConvexField(fieldType: nullable, optional: true),
+            }),
+          ),
+        ],
+      ),
+      discriminator: 'kind',
+    );
+    expect(registry.types.where((type) => !type.isDocument), hasLength(1));
+    expect(registry.resolve(nullable, fieldName: 'slotB')?.name, 'SlotA');
+  });
+
+  test('still rejects incompatible unions claiming the same subclasses', () {
+    final changed = ConvexUnionType([
+      for (final member in category.value.cast<ConvexObjectType>())
+        ConvexObjectType({
+          ...member.value,
+          'extra': const ConvexField(
+            fieldType: ConvexStringType(),
+            optional: false,
+          ),
+        }),
+    ]);
+    expect(
+      () => SchemaTypeRegistry.fromSchema(
+        SchemaSpec(
+          tables: [
+            SchemaTableSpec(
+              name: 'matches',
+              documentType: ConvexObjectType({
+                'slotA': const ConvexField(
+                  fieldType: category,
+                  optional: false,
+                ),
+                'slotB': ConvexField(fieldType: changed, optional: false),
+              }),
+            ),
+          ],
+        ),
+        discriminator: 'kind',
+      ),
+      throwsA(
+        isA<SchemaTypeRegistryException>().having(
+          (error) => error.message,
+          'message',
+          contains('Generated subtype "Beer"'),
+        ),
+      ),
+    );
+  });
+
+  test('rejects incompatible definitions of a reused field alias', () {
+    const other = ConvexUnionType([
+      ConvexObjectType({
+        'kind': ConvexField(
+          fieldType: ConvexLiteralType('food'),
+          optional: false,
+        ),
+      }),
+      ConvexObjectType({
+        'kind': ConvexField(
+          fieldType: ConvexLiteralType('other'),
+          optional: false,
+        ),
+      }),
+    ]);
+    expect(
+      () => SchemaTypeRegistry.fromSchema(
+        const SchemaSpec(
+          tables: [
+            SchemaTableSpec(
+              name: 'matches',
+              documentType: ConvexObjectType({
+                'slotA': ConvexField(fieldType: category, optional: false),
+                'slotB': ConvexField(fieldType: category, optional: false),
+              }),
+            ),
+            SchemaTableSpec(
+              name: 'history',
+              documentType: ConvexObjectType({
+                'slotB': ConvexField(fieldType: other, optional: false),
+              }),
+            ),
+          ],
+        ),
+        discriminator: 'kind',
+      ),
+      throwsA(
+        isA<SchemaTypeRegistryException>().having(
+          (error) => error.message,
+          'message',
+          contains('Schema field "slotB"'),
+        ),
+      ),
+    );
+  });
+
   test('rejects different unions using the same schema field name', () {
     const otherCategory = ConvexUnionType(<ConvexType>[
       ConvexObjectType(<String, ConvexField>{

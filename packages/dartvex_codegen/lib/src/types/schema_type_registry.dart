@@ -27,7 +27,7 @@ class SharedSchemaType {
   /// Convex validator represented by this type.
   final ConvexType type;
 
-  /// Schema paths using this field name and structure.
+  /// Schema paths using this union structure or document.
   final List<String> paths;
 }
 
@@ -49,6 +49,7 @@ class SchemaTypeRegistry {
     Naming naming = const Naming(),
   }) {
     final byField = <String, SharedSchemaType>{};
+    final unionsByIdentity = <String, SharedSchemaType>{};
     final subtypeOwners = <String, String>{};
     final documents = <SharedSchemaType>[];
 
@@ -80,6 +81,13 @@ class SchemaTypeRegistry {
         return;
       }
 
+      final shared = unionsByIdentity[identity];
+      if (shared != null) {
+        shared.paths.add(schemaPath);
+        byField[fieldName] = shared;
+        return;
+      }
+
       final name = naming.typeName(fieldName);
       for (final member in union.members) {
         final owner = subtypeOwners[member.className];
@@ -92,12 +100,14 @@ class SchemaTypeRegistry {
         }
         subtypeOwners[member.className] = name;
       }
-      byField[fieldName] = SharedSchemaType(
+      final sharedType = SharedSchemaType(
         name: name,
         fieldName: fieldName,
         type: type,
         paths: <String>[schemaPath],
       );
+      byField[fieldName] = sharedType;
+      unionsByIdentity[identity] = sharedType;
     }
 
     void visit(ConvexType type, String? ownerField, String path) {
@@ -138,9 +148,16 @@ class SchemaTypeRegistry {
       visit(table.documentType, null, table.name);
     }
 
-    final types = <SharedSchemaType>[...byField.values, ...documents]
+    final types = <SharedSchemaType>[...unionsByIdentity.values, ...documents]
       ..sort((left, right) => left.name.compareTo(right.name));
     final byFieldAndIdentity = <String, SharedSchemaType>{};
+    for (final entry in byField.entries) {
+      byFieldAndIdentity[_fieldIdentity(
+            entry.key,
+            convexTypeIdentity(entry.value.type),
+          )] =
+          entry.value;
+    }
     final byIdentity = <String, List<SharedSchemaType>>{};
     for (final type in types) {
       final identity = convexTypeIdentity(type.type);
