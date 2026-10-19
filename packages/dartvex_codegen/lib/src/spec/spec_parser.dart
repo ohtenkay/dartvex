@@ -144,6 +144,7 @@ class SpecParser {
       case 'null':
         return const ConvexNullType();
       case 'bigint':
+      case 'commitTs':
         return const ConvexBigIntType();
       case 'bytes':
         return const ConvexBytesType();

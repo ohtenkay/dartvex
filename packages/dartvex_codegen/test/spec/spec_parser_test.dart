@@ -143,6 +143,27 @@ void main() {
       );
     });
 
+    test('parses a commit timestamp as bigint', () {
+      final spec = const SpecParser().parseMap(<String, dynamic>{
+        'url': 'https://sample.convex.cloud',
+        'functions': <dynamic>[
+          <String, dynamic>{
+            'functionType': 'Query',
+            'args': <String, dynamic>{
+              'type': 'object',
+              'value': <String, dynamic>{},
+            },
+            'returns': <String, dynamic>{'type': 'commitTs'},
+            'identifier': 'messages.ts:cursor',
+            'visibility': <String, dynamic>{'kind': 'public'},
+          },
+        ],
+      });
+
+      expect(spec.publicFunctions.single.returns, isA<ConvexBigIntType>());
+      expect(spec.warnings, isEmpty);
+    });
+
     test('degrades an unknown Convex type to any with a warning', () {
       final spec = const SpecParser().parseMap(<String, dynamic>{
         'url': 'https://sample.convex.cloud',
