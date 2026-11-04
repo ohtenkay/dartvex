@@ -184,12 +184,12 @@ class SchemaTypeRegistry {
 
   /// Resolves complete documents, then named or uniquely matching field unions.
   SharedSchemaType? resolve(ConvexType type, {String? fieldName}) {
-    final nonNull =
-        type is ConvexUnionType
-            ? type.value.where((member) => !_isNullMember(member)).toList()
-            : <ConvexType>[type];
-    final documentCandidate =
-        nonNull.length == 1 ? nonNull.single : ConvexUnionType(nonNull);
+    final nonNull = type is ConvexUnionType
+        ? type.value.where((member) => !_isNullMember(member)).toList()
+        : <ConvexType>[type];
+    final documentCandidate = nonNull.length == 1
+        ? nonNull.single
+        : ConvexUnionType(nonNull);
     final document =
         _documentsByIdentity[convexTypeIdentity(documentCandidate)];
     if (document != null) return document;
@@ -218,8 +218,9 @@ ConvexType? _documentType(ConvexType type, String tableName) {
     });
   }
   if (type is ConvexUnionType) {
-    final members =
-        type.value.map((member) => _documentType(member, tableName)).toList();
+    final members = type.value
+        .map((member) => _documentType(member, tableName))
+        .toList();
     if (members.every((member) => member != null)) {
       return ConvexUnionType(members.cast<ConvexType>());
     }

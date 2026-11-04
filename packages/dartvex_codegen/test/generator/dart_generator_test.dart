@@ -9,10 +9,9 @@ void main() {
     late FunctionsSpec spec;
 
     setUpAll(() async {
-      final fixture =
-          await File(
-            path.join('test', 'fixtures', 'function_spec.json'),
-          ).readAsString();
+      final fixture = await File(
+        path.join('test', 'fixtures', 'function_spec.json'),
+      ).readAsString();
       spec = const SpecParser().parseString(fixture);
     });
 
@@ -43,10 +42,9 @@ void main() {
       expect(widgets, contains('this.mode = MutationMode.single'));
       expect(widgets, contains('final MutationMode mode;'));
       expect(widgets, contains('mode: mode,'));
-      final expected =
-          await File(
-            path.join('test', 'goldens', 'sample', 'widgets', 'messages.dart'),
-          ).readAsString();
+      final expected = await File(
+        path.join('test', 'goldens', 'sample', 'widgets', 'messages.dart'),
+      ).readAsString();
       expect(widgets, expected);
     });
 
@@ -175,33 +173,28 @@ Future<void> main() async {
     test('matches golden files for core outputs', () async {
       final output = DartGenerator().generate(spec);
 
-      final expectedApi =
-          await File(
-            path.join('test', 'goldens', 'sample', 'api.dart'),
-          ).readAsString();
-      final expectedMessages =
-          await File(
-            path.join('test', 'goldens', 'sample', 'modules', 'messages.dart'),
-          ).readAsString();
-      final expectedUsers =
-          await File(
-            path.join(
-              'test',
-              'goldens',
-              'sample',
-              'modules',
-              'admin',
-              'users.dart',
-            ),
-          ).readAsString();
-      final expectedSchema =
-          await File(
-            path.join('test', 'goldens', 'sample', 'schema.dart'),
-          ).readAsString();
-      final expectedRuntime =
-          await File(
-            path.join('test', 'goldens', 'sample', 'runtime.dart'),
-          ).readAsString();
+      final expectedApi = await File(
+        path.join('test', 'goldens', 'sample', 'api.dart'),
+      ).readAsString();
+      final expectedMessages = await File(
+        path.join('test', 'goldens', 'sample', 'modules', 'messages.dart'),
+      ).readAsString();
+      final expectedUsers = await File(
+        path.join(
+          'test',
+          'goldens',
+          'sample',
+          'modules',
+          'admin',
+          'users.dart',
+        ),
+      ).readAsString();
+      final expectedSchema = await File(
+        path.join('test', 'goldens', 'sample', 'schema.dart'),
+      ).readAsString();
+      final expectedRuntime = await File(
+        path.join('test', 'goldens', 'sample', 'runtime.dart'),
+      ).readAsString();
 
       expect(output.files['api.dart'], expectedApi);
       expect(output.files['modules/messages.dart'], expectedMessages);
@@ -262,36 +255,46 @@ Future<void> main() async {
           ),
         }),
       ]);
-      final output = DartGenerator(
-        schema: const SchemaSpec(
-          tables: <SchemaTableSpec>[
-            SchemaTableSpec(
-              name: 'drinks',
-              documentType: ConvexObjectType(<String, ConvexField>{
-                'category': ConvexField(fieldType: category, optional: false),
-              }),
+      final output =
+          DartGenerator(
+            schema: const SchemaSpec(
+              tables: <SchemaTableSpec>[
+                SchemaTableSpec(
+                  name: 'drinks',
+                  documentType: ConvexObjectType(<String, ConvexField>{
+                    'category': ConvexField(
+                      fieldType: category,
+                      optional: false,
+                    ),
+                  }),
+                ),
+              ],
             ),
-          ],
-        ),
-      ).generate(
-        FunctionsSpec(
-          url: 'https://example.com',
-          functions: <BaseFunctionSpec>[
-            _function(
-              identifier: 'drinks.ts:create',
-              args: const ConvexObjectType(<String, ConvexField>{
-                'category': ConvexField(fieldType: category, optional: false),
-              }),
+          ).generate(
+            FunctionsSpec(
+              url: 'https://example.com',
+              functions: <BaseFunctionSpec>[
+                _function(
+                  identifier: 'drinks.ts:create',
+                  args: const ConvexObjectType(<String, ConvexField>{
+                    'category': ConvexField(
+                      fieldType: category,
+                      optional: false,
+                    ),
+                  }),
+                ),
+                _function(
+                  identifier: 'drinks.ts:get',
+                  returns: const ConvexObjectType(<String, ConvexField>{
+                    'category': ConvexField(
+                      fieldType: category,
+                      optional: false,
+                    ),
+                  }),
+                ),
+              ],
             ),
-            _function(
-              identifier: 'drinks.ts:get',
-              returns: const ConvexObjectType(<String, ConvexField>{
-                'category': ConvexField(fieldType: category, optional: false),
-              }),
-            ),
-          ],
-        ),
-      );
+          );
 
       expect(output.files, contains('types.dart'));
       expect(output.files['types.dart'], contains('sealed class Category'));
@@ -322,20 +325,21 @@ Future<void> main() async {
           'id': ConvexField(fieldType: ConvexIdType('teams'), optional: false),
         }),
       ]);
-      final output = DartGenerator(
-        schema: const SchemaSpec(
-          tables: <SchemaTableSpec>[
-            SchemaTableSpec(
-              name: 'events',
-              documentType: ConvexObjectType(<String, ConvexField>{
-                'target': ConvexField(fieldType: target, optional: false),
-              }),
+      final output =
+          DartGenerator(
+            schema: const SchemaSpec(
+              tables: <SchemaTableSpec>[
+                SchemaTableSpec(
+                  name: 'events',
+                  documentType: ConvexObjectType(<String, ConvexField>{
+                    'target': ConvexField(fieldType: target, optional: false),
+                  }),
+                ),
+              ],
             ),
-          ],
-        ),
-      ).generate(
-        FunctionsSpec(url: 'https://example.com', functions: const []),
-      );
+          ).generate(
+            FunctionsSpec(url: 'https://example.com', functions: const []),
+          );
 
       expect(output.files['types.dart'], contains('UsersId id'));
       expect(output.files['types.dart'], contains('TeamsId id'));

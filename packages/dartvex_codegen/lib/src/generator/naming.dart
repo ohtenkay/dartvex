@@ -104,10 +104,9 @@ class Naming {
     if (parts.isEmpty) {
       return 'GeneratedType';
     }
-    final base =
-        parts
-            .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
-            .join();
+    final base = parts
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join();
     return _sanitizeTypeName(base);
   }
 
@@ -118,11 +117,10 @@ class Naming {
       return 'call';
     }
     final first = _lowerFirst(parts.first);
-    final rest =
-        parts
-            .skip(1)
-            .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
-            .join();
+    final rest = parts
+        .skip(1)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join();
     return _sanitizeFieldName('$first$rest');
   }
 
@@ -133,11 +131,10 @@ class Naming {
       return 'value';
     }
     final first = _lowerFirst(parts.first);
-    final rest =
-        parts
-            .skip(1)
-            .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
-            .join();
+    final rest = parts
+        .skip(1)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join();
     return _sanitizeFieldName('$first$rest');
   }
 

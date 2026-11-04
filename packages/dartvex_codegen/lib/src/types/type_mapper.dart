@@ -207,9 +207,8 @@ class TypeMapper {
           return MappedType(
             dartType: DartNullableType(mapped.dartType),
             encode: _nullableEncode(mapped.encode),
-            decode:
-                (expression) =>
-                    '$expression == null ? null : ${mapped.decode(expression)}',
+            decode: (expression) =>
+                '$expression == null ? null : ${mapped.decode(expression)}',
           );
         }
         return mapped;
@@ -226,26 +225,24 @@ class TypeMapper {
       return MappedType(
         dartType: const DartPrimitiveType('bool'),
         encode: (expression) => expression,
-        decode:
-            (expression) => "expectBool($expression, label: '$suggestedName')",
+        decode: (expression) =>
+            "expectBool($expression, label: '$suggestedName')",
       );
     }
     if (type is ConvexStringType) {
       return MappedType(
         dartType: const DartPrimitiveType('String'),
         encode: (expression) => expression,
-        decode:
-            (expression) =>
-                "expectString($expression, label: '$suggestedName')",
+        decode: (expression) =>
+            "expectString($expression, label: '$suggestedName')",
       );
     }
     if (type is ConvexNumberType) {
       return MappedType(
         dartType: const DartPrimitiveType('double'),
         encode: (expression) => expression,
-        decode:
-            (expression) =>
-                "expectDouble($expression, label: '$suggestedName')",
+        decode: (expression) =>
+            "expectDouble($expression, label: '$suggestedName')",
       );
     }
     if (type is ConvexNullType) {
@@ -259,9 +256,8 @@ class TypeMapper {
       return MappedType(
         dartType: const DartPrimitiveType('BigInt'),
         encode: (expression) => expression,
-        decode:
-            (expression) =>
-                "expectBigInt($expression, label: '$suggestedName')",
+        decode: (expression) =>
+            "expectBigInt($expression, label: '$suggestedName')",
       );
     }
     if (type is ConvexBytesType) {
@@ -269,8 +265,8 @@ class TypeMapper {
       return MappedType(
         dartType: const DartPrimitiveType('Uint8List'),
         encode: (expression) => expression,
-        decode:
-            (expression) => "expectBytes($expression, label: '$suggestedName')",
+        decode: (expression) =>
+            "expectBytes($expression, label: '$suggestedName')",
       );
     }
     if (type is ConvexLiteralType) {
@@ -290,12 +286,10 @@ class TypeMapper {
       return MappedType(
         dartType: literalType,
         encode: (expression) => expression,
-        decode:
-            (expression) =>
-                literalType.annotation == 'Null'
-                    ? 'null'
-                    : 'expectLiteral<${literalType.annotation}>($expression, '
-                        '$expectedCode, label: \'$suggestedName\')',
+        decode: (expression) => literalType.annotation == 'Null'
+            ? 'null'
+            : 'expectLiteral<${literalType.annotation}>($expression, '
+                  '$expectedCode, label: \'$suggestedName\')',
       );
     }
     if (type is ConvexIdType) {
@@ -304,9 +298,8 @@ class TypeMapper {
       return MappedType(
         dartType: DartNamedType(typeName),
         encode: (expression) => '$expression.value',
-        decode:
-            (expression) =>
-                "$typeName(expectString($expression, label: '$suggestedName'))",
+        decode: (expression) =>
+            "$typeName(expectString($expression, label: '$suggestedName'))",
       );
     }
     if (type is ConvexArrayType) {
@@ -318,13 +311,11 @@ class TypeMapper {
       );
       return MappedType(
         dartType: DartListType(item.dartType),
-        encode:
-            (expression) =>
-                '$expression.map((item) => ${item.encode('item')}).toList()',
-        decode:
-            (expression) =>
-                'expectList($expression, label: \'$suggestedName\')'
-                '.map((item) => ${item.decode('item')}).toList()',
+        encode: (expression) =>
+            '$expression.map((item) => ${item.encode('item')}).toList()',
+        decode: (expression) =>
+            'expectList($expression, label: \'$suggestedName\')'
+            '.map((item) => ${item.decode('item')}).toList()',
       );
     }
     if (type is ConvexRecordType) {
@@ -339,8 +330,8 @@ class TypeMapper {
             valueType: DartPrimitiveType('dynamic'),
           ),
           encode: (expression) => expression,
-          decode:
-              (expression) => "expectMap($expression, label: '$suggestedName')",
+          decode: (expression) =>
+              "expectMap($expression, label: '$suggestedName')",
         );
       }
       final value = mapType(
@@ -354,13 +345,11 @@ class TypeMapper {
           keyType: const DartPrimitiveType('String'),
           valueType: value.dartType,
         ),
-        encode:
-            (expression) =>
-                "$expression.map((key, value) => MapEntry(key, ${value.encode('value')}))",
-        decode:
-            (expression) =>
-                "expectMap($expression, label: '$suggestedName')"
-                ".map((key, value) => MapEntry(key, ${value.decode('value')}))",
+        encode: (expression) =>
+            "$expression.map((key, value) => MapEntry(key, ${value.encode('value')}))",
+        decode: (expression) =>
+            "expectMap($expression, label: '$suggestedName')"
+            ".map((key, value) => MapEntry(key, ${value.decode('value')}))",
       );
     }
     if (type is ConvexObjectType) {
@@ -375,8 +364,8 @@ class TypeMapper {
             valueType: DartPrimitiveType('dynamic'),
           ),
           encode: (expression) => expression,
-          decode:
-              (expression) => "expectMap($expression, label: '$suggestedName')",
+          decode: (expression) =>
+              "expectMap($expression, label: '$suggestedName')",
         );
       }
       final typeName = context.reserveTypeName(suggestedName);
@@ -416,10 +405,9 @@ class TypeMapper {
           context: context,
           fieldName: rawName,
         );
-        final fieldType =
-            field.optional
-                ? DartNamedType('Optional<${mappedField.annotation}>')
-                : mappedField.dartType;
+        final fieldType = field.optional
+            ? DartNamedType('Optional<${mappedField.annotation}>')
+            : mappedField.dartType;
         fields.add(DartRecordField(name: safeName, type: fieldType));
         if (field.optional) {
           encodeBuffer.write(
@@ -565,9 +553,8 @@ class TypeMapper {
       return MappedType(
         dartType: DartNullableType(inner.dartType),
         encode: _nullableEncode(inner.encode),
-        decode:
-            (expression) =>
-                '$expression == null ? null : ${inner.decode(expression)}',
+        decode: (expression) =>
+            '$expression == null ? null : ${inner.decode(expression)}',
       );
     }
 
@@ -629,20 +616,16 @@ class TypeMapper {
         ..writeln('  }')
         ..write('}');
       context.addDeclaration(typeName, enumBuffer.toString());
-      final dartType =
-          nullable
-              ? DartNullableType(DartNamedType(typeName))
-              : DartNamedType(typeName);
+      final dartType = nullable
+          ? DartNullableType(DartNamedType(typeName))
+          : DartNamedType(typeName);
       return MappedType(
         dartType: dartType,
-        encode:
-            (expression) =>
-                nullable ? '$expression?.value' : '$expression.value',
-        decode:
-            (expression) =>
-                nullable
-                    ? '$expression == null ? null : $typeName.fromJson($expression)'
-                    : '$typeName.fromJson($expression)',
+        encode: (expression) =>
+            nullable ? '$expression?.value' : '$expression.value',
+        decode: (expression) => nullable
+            ? '$expression == null ? null : $typeName.fromJson($expression)'
+            : '$typeName.fromJson($expression)',
       );
     }
 
@@ -704,21 +687,17 @@ class TypeMapper {
     context.addCodec('_encode$typeName', _renderUnionEncode(typeName, cases));
     context.addCodec('_decode$typeName', _renderUnionDecode(typeName, cases));
 
-    final dartType =
-        nullable
-            ? DartNullableType(DartNamedType(typeName))
-            : DartNamedType(typeName);
+    final dartType = nullable
+        ? DartNullableType(DartNamedType(typeName))
+        : DartNamedType(typeName);
     return MappedType(
       dartType: dartType,
-      encode:
-          nullable
-              ? _nullableEncode((expression) => '_encode$typeName($expression)')
-              : (expression) => '_encode$typeName($expression)',
-      decode:
-          (expression) =>
-              nullable
-                  ? '$expression == null ? null : _decode$typeName($expression)'
-                  : '_decode$typeName($expression)',
+      encode: nullable
+          ? _nullableEncode((expression) => '_encode$typeName($expression)')
+          : (expression) => '_encode$typeName($expression)',
+      decode: (expression) => nullable
+          ? '$expression == null ? null : _decode$typeName($expression)'
+          : '_decode$typeName($expression)',
     );
   }
 
@@ -758,8 +737,9 @@ class TypeMapper {
         mappedType: mapped,
         optional: field.optional,
       );
-      final annotation =
-          field.optional ? 'Optional<${mapped.annotation}>' : mapped.annotation;
+      final annotation = field.optional
+          ? 'Optional<${mapped.annotation}>'
+          : mapped.annotation;
       declaration.writeln('  $annotation get $name;');
     }
     for (final member in union.members) {
@@ -839,10 +819,9 @@ class TypeMapper {
           )
           ..writeln('  });');
         for (final field in fields) {
-          final annotation =
-              field.optional
-                  ? 'Optional<${field.mappedType.annotation}>'
-                  : field.mappedType.annotation;
+          final annotation = field.optional
+              ? 'Optional<${field.mappedType.annotation}>'
+              : field.mappedType.annotation;
           declaration
             ..writeln()
             ..writeln('  final $annotation ${field.name};');
@@ -867,11 +846,10 @@ class TypeMapper {
         }
       }
       encoded.write('}');
-      final pattern =
-          fields.isEmpty
-              ? '$className()'
-              : '$className('
-                  '${fields.map((field) => '${field.name}: final ${field.name}').join(', ')})';
+      final pattern = fields.isEmpty
+          ? '$className()'
+          : '$className('
+                '${fields.map((field) => '${field.name}: final ${field.name}').join(', ')})';
       encodeCases.add('    case $pattern: return $encoded;');
 
       final decoded = StringBuffer();
@@ -896,7 +874,7 @@ class TypeMapper {
           decoded.writeln(
             field.optional
                 ? '          ${field.name}: map.containsKey($key) '
-                    '? Optional.of($expression) : const Optional.absent(),'
+                      '? Optional.of($expression) : const Optional.absent(),'
                 : '          ${field.name}: $expression,',
           );
         }
@@ -941,21 +919,17 @@ class TypeMapper {
           '}',
     );
 
-    final dartType =
-        nullable
-            ? DartNullableType(DartNamedType(typeName))
-            : DartNamedType(typeName);
+    final dartType = nullable
+        ? DartNullableType(DartNamedType(typeName))
+        : DartNamedType(typeName);
     return MappedType(
       dartType: dartType,
-      encode:
-          nullable
-              ? _nullableEncode((expression) => '_encode$typeName($expression)')
-              : (expression) => '_encode$typeName($expression)',
-      decode:
-          (expression) =>
-              nullable
-                  ? '$expression == null ? null : _decode$typeName($expression)'
-                  : '_decode$typeName($expression)',
+      encode: nullable
+          ? _nullableEncode((expression) => '_encode$typeName($expression)')
+          : (expression) => '_encode$typeName($expression)',
+      decode: (expression) => nullable
+          ? '$expression == null ? null : _decode$typeName($expression)'
+          : '_decode$typeName($expression)',
     );
   }
 
@@ -1018,12 +992,11 @@ class TypeMapper {
   }
 
   List<ConvexType> _removeRedundantLiteralMembers(List<ConvexType> members) {
-    final coveredScalarTags =
-        members
-            .where((type) => type is! ConvexLiteralType)
-            .map(_scalarLiteralCoverageTag)
-            .whereType<String>()
-            .toSet();
+    final coveredScalarTags = members
+        .where((type) => type is! ConvexLiteralType)
+        .map(_scalarLiteralCoverageTag)
+        .whereType<String>()
+        .toSet();
     if (coveredScalarTags.isEmpty) {
       return members;
     }
