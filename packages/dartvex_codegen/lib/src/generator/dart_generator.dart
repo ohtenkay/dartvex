@@ -78,14 +78,13 @@ class DartGenerator {
   /// Generates the runtime, API modules, and schema types for [spec].
   GeneratedOutput generate(FunctionsSpec spec) {
     final warnings = <String>[...spec.warnings, ...?schema?.warnings];
-    _schemaTypes =
-        schema == null
-            ? null
-            : SchemaTypeRegistry.fromSchema(
-              schema!,
-              discriminator: discriminator,
-              naming: _naming,
-            );
+    _schemaTypes = schema == null
+        ? null
+        : SchemaTypeRegistry.fromSchema(
+            schema!,
+            discriminator: discriminator,
+            naming: _naming,
+          );
     final root = _buildTree(spec);
     final files = <String, String>{};
 
@@ -174,10 +173,9 @@ class DartGenerator {
     _externalTypeNames = context.declarationNames;
     _sharedTableNames = context.tableNames;
 
-    final imports =
-        ImportManager()
-          ..add('./runtime.dart')
-          ..add('./schema.dart');
+    final imports = ImportManager()
+      ..add('./runtime.dart')
+      ..add('./schema.dart');
     if (context.usesTypedData) {
       imports.add('dart:typed_data');
     }
@@ -192,9 +190,8 @@ class DartGenerator {
 
   _ModuleNode _buildTree(FunctionsSpec spec) {
     final root = _ModuleNode(pathSegments: const <String>[]);
-    final publicFunctions =
-        spec.publicFunctions.toList()
-          ..sort((left, right) => left.identifier.compareTo(right.identifier));
+    final publicFunctions = spec.publicFunctions.toList()
+      ..sort((left, right) => left.identifier.compareTo(right.identifier));
 
     for (final baseFunction in spec.functions) {
       if (baseFunction is HttpFunctionSpec) {
@@ -320,12 +317,11 @@ class DartGenerator {
 
   Iterable<_ModuleNode> _flattenNodes(_ModuleNode root) sync* {
     yield root;
-    final children =
-        root.children.values.toList()..sort(
-          (left, right) => left.pathSegments
-              .join('/')
-              .compareTo(right.pathSegments.join('/')),
-        );
+    final children = root.children.values.toList()
+      ..sort(
+        (left, right) =>
+            left.pathSegments.join('/').compareTo(right.pathSegments.join('/')),
+      );
     for (final child in children) {
       yield* _flattenNodes(child);
     }
@@ -333,27 +329,20 @@ class DartGenerator {
 
   String _renderNode(_ModuleNode node, {required bool isRoot}) {
     final filePath = isRoot ? 'api.dart' : _moduleFilePath(node);
-    final imports =
-        ImportManager()
-          ..add(clientImport)
-          ..add(
-            _naming.relativeImport(
-              fromFile: filePath,
-              targetFile: 'runtime.dart',
-            ),
-          )
-          ..add(
-            _naming.relativeImport(
-              fromFile: filePath,
-              targetFile: 'schema.dart',
-            ),
-          );
+    final imports = ImportManager()
+      ..add(clientImport)
+      ..add(
+        _naming.relativeImport(fromFile: filePath, targetFile: 'runtime.dart'),
+      )
+      ..add(
+        _naming.relativeImport(fromFile: filePath, targetFile: 'schema.dart'),
+      );
 
-    final childNodes =
-        node.children.values.toList()..sort(
-          (left, right) =>
-              left.pathSegments.last.compareTo(right.pathSegments.last),
-        );
+    final childNodes = node.children.values.toList()
+      ..sort(
+        (left, right) =>
+            left.pathSegments.last.compareTo(right.pathSegments.last),
+      );
     for (final child in childNodes) {
       final target = _moduleFilePath(child);
       imports.add(
@@ -385,13 +374,12 @@ class DartGenerator {
       );
     }
 
-    final buffer =
-        StringBuffer()
-          ..writeln(generatedFileHeader)
-          ..writeln(generatedFileIgnores)
-          ..writeln()
-          ..writeln(imports.render())
-          ..writeln();
+    final buffer = StringBuffer()
+      ..writeln(generatedFileHeader)
+      ..writeln(generatedFileIgnores)
+      ..writeln()
+      ..writeln(imports.render())
+      ..writeln();
 
     if (isRoot) {
       buffer
@@ -469,8 +457,9 @@ class DartGenerator {
       'Query' => 'query',
       'Mutation' => 'mutate',
       'Action' => 'action',
-      _ =>
-        throw StateError('Unsupported function type ${function.functionType}'),
+      _ => throw StateError(
+        'Unsupported function type ${function.functionType}',
+      ),
     };
 
     final methodBuffer = StringBuffer();
@@ -623,8 +612,9 @@ class DartGenerator {
     }
 
     if (function.functionType == 'Mutation') {
-      final mutationResultType =
-          resultType.annotation == 'Null' ? 'void' : resultType.annotation;
+      final mutationResultType = resultType.annotation == 'Null'
+          ? 'void'
+          : resultType.annotation;
       final referenceName = '${methodName}MutationReference';
       methodBuffer
         ..writeln()
@@ -792,37 +782,34 @@ class DartGenerator {
     }
     final referenceName = '${methodName}PaginatedQueryReference';
     final signature = <String>[...argsFields, 'int pageSize = 20'].join(', ');
-    final argsMap =
-        argsMapEntries.isEmpty
-            ? 'const <String, dynamic>{}'
-            : '<String, dynamic>{${argsMapEntries.join(' ')}}';
+    final argsMap = argsMapEntries.isEmpty
+        ? 'const <String, dynamic>{}'
+        : '<String, dynamic>{${argsMapEntries.join(' ')}}';
 
-    final methodBuffer =
-        StringBuffer()
-          ..writeln(
-            'TypedConvexPaginatedQuery<$elementAnnotation> '
-            '$methodName({$signature}) {',
-          )
-          // No intermediate local: a user argument named `query` must stay
-          // referencable inside the args map below.
-          ..writeln('  return TypedConvexPaginatedQuery<$elementAnnotation>(')
-          ..writeln('    _client.paginatedQuery(')
-          ..writeln(
-            '      ${dartSingleQuotedString(function.convexFunctionName)},',
-          )
-          ..writeln('      $argsMap,')
-          ..writeln('      pageSize: pageSize,')
-          ..writeln('    ),')
-          ..writeln('    (dynamic raw) => $elementDecode,')
-          ..writeln('  );')
-          ..write('}');
+    final methodBuffer = StringBuffer()
+      ..writeln(
+        'TypedConvexPaginatedQuery<$elementAnnotation> '
+        '$methodName({$signature}) {',
+      )
+      // No intermediate local: a user argument named `query` must stay
+      // referencable inside the args map below.
+      ..writeln('  return TypedConvexPaginatedQuery<$elementAnnotation>(')
+      ..writeln('    _client.paginatedQuery(')
+      ..writeln('      ${dartSingleQuotedString(function.convexFunctionName)},')
+      ..writeln('      $argsMap,')
+      ..writeln('      pageSize: pageSize,')
+      ..writeln('    ),')
+      ..writeln('    (dynamic raw) => $elementDecode,')
+      ..writeln('  );')
+      ..write('}');
 
     methodBuffer
       ..writeln()
       ..writeln(
         'ConvexPaginatedQueryReference<$referenceArgsType, $elementAnnotation> get ${methodName}PaginatedQuery => $referenceName;',
       );
-    final helper = '''
+    final helper =
+        '''
 final ConvexPaginatedQueryReference<$referenceArgsType, $elementAnnotation> $referenceName = ConvexPaginatedQueryReference(
   name: ${dartSingleQuotedString(function.convexFunctionName)},
   encode: (args) => $referenceEncode,
@@ -848,13 +835,12 @@ final ConvexPaginatedQueryReference<$referenceArgsType, $elementAnnotation> $ref
       tableIdClasses[typeName] = table;
     }
 
-    final buffer =
-        StringBuffer()
-          ..writeln(generatedFileHeader)
-          ..writeln(generatedFileIgnores)
-          ..writeln()
-          ..writeln("import 'runtime.dart';")
-          ..writeln();
+    final buffer = StringBuffer()
+      ..writeln(generatedFileHeader)
+      ..writeln(generatedFileIgnores)
+      ..writeln()
+      ..writeln("import 'runtime.dart';")
+      ..writeln();
 
     for (final table in sortedTables) {
       final typeName = '${_naming.typeName(table)}Id';
@@ -1124,23 +1110,20 @@ String describeType(dynamic value) {
   String _moduleFilePath(_ModuleNode node) =>
       'modules/${node.pathSegments.join('/')}.dart';
 
-  String _widgetFilePath(_ModuleNode node) =>
-      node.pathSegments.isEmpty
-          ? 'widgets/root.dart'
-          : 'widgets/${node.pathSegments.join('/')}.dart';
+  String _widgetFilePath(_ModuleNode node) => node.pathSegments.isEmpty
+      ? 'widgets/root.dart'
+      : 'widgets/${node.pathSegments.join('/')}.dart';
 
   String _renderFlutterWidgets(_ModuleNode node) {
     final filePath = _widgetFilePath(node);
-    final modulePath =
-        node.pathSegments.isEmpty ? 'api.dart' : _moduleFilePath(node);
-    final imports =
-        ImportManager()
-          ..add('dart:async')
-          ..add('package:flutter/widgets.dart')
-          ..add('package:dartvex_flutter/dartvex_flutter.dart')
-          ..add(
-            _naming.relativeImport(fromFile: filePath, targetFile: 'api.dart'),
-          );
+    final modulePath = node.pathSegments.isEmpty
+        ? 'api.dart'
+        : _moduleFilePath(node);
+    final imports = ImportManager()
+      ..add('dart:async')
+      ..add('package:flutter/widgets.dart')
+      ..add('package:dartvex_flutter/dartvex_flutter.dart')
+      ..add(_naming.relativeImport(fromFile: filePath, targetFile: 'api.dart'));
     if (modulePath != 'api.dart') {
       imports.add(
         _naming.relativeImport(fromFile: filePath, targetFile: modulePath),
@@ -1169,17 +1152,17 @@ String describeType(dynamic value) {
         suggestedName: '${prefix}Result',
         context: context,
       );
-      final resultType =
-          mappedResult.annotation == 'Null' ? 'void' : mappedResult.annotation;
+      final resultType = mappedResult.annotation == 'Null'
+          ? 'void'
+          : mappedResult.annotation;
       final args = function.args;
       var argsType = 'NoArgs';
       var callSignature = '';
       var argsExpression = 'const NoArgs()';
       if (args is ConvexObjectType && args.value.isNotEmpty) {
-        argsType =
-            mapper
-                .mapType(args, suggestedName: '${prefix}Args', context: context)
-                .annotation;
+        argsType = mapper
+            .mapType(args, suggestedName: '${prefix}Args', context: context)
+            .annotation;
         final fields = <String>[];
         final assignments = <String>[];
         for (final entry in args.value.entries) {
@@ -1291,24 +1274,22 @@ class $widgetName extends StatelessWidget {
           '${modulePrefix.substring(0, modulePrefix.length - 3)}$prefix';
       final widgetName = '${baseName}Query';
       final methodName = _naming.methodName(function.functionName);
-      final resultType =
-          mapper
-              .mapType(
-                function.returns,
-                suggestedName: '${prefix}Result',
-                context: context,
-              )
-              .annotation;
+      final resultType = mapper
+          .mapType(
+            function.returns,
+            suggestedName: '${prefix}Result',
+            context: context,
+          )
+          .annotation;
       final args = function.args;
       var argsType = 'NoArgs';
       var argsExpression = 'const NoArgs()';
       final constructorArgs = <String>[];
       final fields = <String>[];
       if (args is ConvexObjectType && args.value.isNotEmpty) {
-        argsType =
-            mapper
-                .mapType(args, suggestedName: '${prefix}Args', context: context)
-                .annotation;
+        argsType = mapper
+            .mapType(args, suggestedName: '${prefix}Args', context: context)
+            .annotation;
         final assignments = <String>[];
         final usedWidgetNames = <String>{
           'key',
@@ -1331,10 +1312,9 @@ class $widgetName extends StatelessWidget {
             context: context,
             fieldName: entry.key,
           );
-          final fieldType =
-              entry.value.optional
-                  ? 'Optional<${mappedField.annotation}>'
-                  : mappedField.annotation;
+          final fieldType = entry.value.optional
+              ? 'Optional<${mappedField.annotation}>'
+              : mappedField.annotation;
           fields.add('final $fieldType $widgetFieldName;');
           constructorArgs.add(
             entry.value.optional
@@ -1421,26 +1401,24 @@ class $widgetName extends StatelessWidget {
     final widgetName =
         '${modulePrefix.substring(0, modulePrefix.length - 3)}${prefix}Query';
     final methodName = _naming.methodName(function.functionName);
-    final itemType =
-        info.elementType == null
-            ? 'Map<String, dynamic>'
-            : mapper
-                .mapType(
-                  info.elementType!,
-                  suggestedName: '${prefix}PageItem',
-                  context: context,
-                )
-                .annotation;
-    final argsType =
-        info.otherArgs.isEmpty
-            ? 'NoArgs'
-            : mapper
-                .mapType(
-                  ConvexObjectType(info.otherArgs),
-                  suggestedName: '${prefix}Args',
-                  context: context,
-                )
-                .annotation;
+    final itemType = info.elementType == null
+        ? 'Map<String, dynamic>'
+        : mapper
+              .mapType(
+                info.elementType!,
+                suggestedName: '${prefix}PageItem',
+                context: context,
+              )
+              .annotation;
+    final argsType = info.otherArgs.isEmpty
+        ? 'NoArgs'
+        : mapper
+              .mapType(
+                ConvexObjectType(info.otherArgs),
+                suggestedName: '${prefix}Args',
+                context: context,
+              )
+              .annotation;
     final constructorArgs = <String>[];
     final fields = <String>[];
     final assignments = <String>[];
@@ -1469,10 +1447,9 @@ class $widgetName extends StatelessWidget {
         context: context,
         fieldName: entry.key,
       );
-      final fieldType =
-          entry.value.optional
-              ? 'Optional<${mapped.annotation}>'
-              : mapped.annotation;
+      final fieldType = entry.value.optional
+          ? 'Optional<${mapped.annotation}>'
+          : mapped.annotation;
       fields.add('final $fieldType $widgetFieldName;');
       constructorArgs.add(
         entry.value.optional
@@ -1481,8 +1458,9 @@ class $widgetName extends StatelessWidget {
       );
       assignments.add('$fieldName: $widgetFieldName');
     }
-    final argsExpression =
-        assignments.isEmpty ? 'const NoArgs()' : '(${assignments.join(', ')})';
+    final argsExpression = assignments.isEmpty
+        ? 'const NoArgs()'
+        : '(${assignments.join(', ')})';
     return '''
 /// Flutter widget for the paginated ${function.convexFunctionName} query.
 class $widgetName extends StatelessWidget {

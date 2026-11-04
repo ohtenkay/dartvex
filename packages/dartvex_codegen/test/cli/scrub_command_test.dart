@@ -10,9 +10,8 @@ void main() {
 
       final exitCode = await runConvexCodegen(
         <String>['scrub'],
-        readStdin:
-            () async =>
-                '{"url":"https://chosen-deployment-name.convex.cloud","functions":[]}',
+        readStdin: () async =>
+            '{"url":"https://chosen-deployment-name.convex.cloud","functions":[]}',
         writeOutput: output.write,
         errorLog: (_) {},
       );
