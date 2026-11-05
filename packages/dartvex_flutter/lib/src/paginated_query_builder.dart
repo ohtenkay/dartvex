@@ -69,7 +69,26 @@ class PaginatedQueryBuilder<T> extends StatelessWidget {
     this.args,
     this.pageSize = 20,
     this.client,
-  });
+  }) : snapshotBuilder = null;
+
+  /// Creates a builder with snapshots and load, retry, and reset controls.
+  const PaginatedQueryBuilder.snapshot({
+    super.key,
+    required this.query,
+    required this.snapshotBuilder,
+    required this.fromJson,
+    this.args,
+    this.pageSize = 20,
+    this.client,
+  }) : builder = null;
+
+  /// Builds every pagination state and exposes query controls.
+  final Widget Function(
+    BuildContext,
+    ConvexPaginatedQuerySnapshot<T>,
+    VoidCallback,
+  )?
+  snapshotBuilder;
 
   /// The paginated Convex query function name.
   final String query;
@@ -81,7 +100,7 @@ class PaginatedQueryBuilder<T> extends StatelessWidget {
   final int pageSize;
 
   /// Builder function receiving the accumulated items and controls.
-  final PaginatedQueryWidgetBuilder<T> builder;
+  final PaginatedQueryWidgetBuilder<T>? builder;
 
   /// Deserializer for individual items.
   final T Function(Map<String, dynamic>) fromJson;
@@ -96,8 +115,12 @@ class PaginatedQueryBuilder<T> extends StatelessWidget {
     pageSize: pageSize,
     client: client,
     decode: (raw) => fromJson(raw as Map<String, dynamic>),
-    builder: (context, snapshot, loadMore) =>
-        builder(context, snapshot.items, loadMore, snapshot.status),
+    builder: (context, snapshot, loadMore) {
+      final buildSnapshot = snapshotBuilder;
+      return buildSnapshot != null
+          ? buildSnapshot(context, snapshot, loadMore)
+          : builder!(context, snapshot.items, loadMore, snapshot.status);
+    },
   );
 }
 
@@ -109,7 +132,41 @@ class ConvexPaginatedQuerySnapshot<T> {
     required this.status,
     required this.isDone,
     this.error,
-  });
+    VoidCallback? onLoadMore,
+    VoidCallback? onRetry,
+    VoidCallback? onReset,
+  }) : _onLoadMore = onLoadMore,
+       _onRetry = onRetry,
+       _onReset = onReset;
+
+  final VoidCallback? _onLoadMore;
+  final VoidCallback? _onRetry;
+  final VoidCallback? _onReset;
+
+  /// Whether the first or an additional page is loading.
+  bool get isLoading =>
+      status == PaginationStatus.loading ||
+      status == PaginationStatus.loadingMore;
+
+  /// Whether the server has not yet exhausted the query.
+  ///
+  /// This can be true while loading or failed; [loadMore] only acts when idle.
+  bool get hasMore => !isDone;
+
+  /// Loads another page when idle; otherwise does nothing.
+  ///
+  /// Controls on manually constructed snapshots with no callbacks do nothing.
+  /// Controls captured before a reset, argument change, or disposal are inert.
+  void loadMore() => _onLoadMore?.call();
+
+  /// Restarts a failed query from page one, discarding its loaded pages.
+  ///
+  /// Does nothing unless the current query is in an error state. This also
+  /// recovers stream and item-decoding errors. Successful queries are untouched.
+  void retry() => _onRetry?.call();
+
+  /// Discards all loaded pages and restarts from page one, in any state.
+  void reset() => _onReset?.call();
 
   /// Accumulated items from all loaded pages.
   final List<T> items;
@@ -393,6 +450,11 @@ class _PaginatedQueryState<T> extends State<_PaginatedQuery<T>> {
     _query?.loadMore();
   }
 
+  void _restart({required bool onlyIfFailed}) {
+    if (!mounted || (onlyIfFailed && _status != PaginationStatus.error)) return;
+    setState(_start);
+  }
+
   @override
   void dispose() {
     _queryGeneration += 1;
@@ -403,6 +465,11 @@ class _PaginatedQueryState<T> extends State<_PaginatedQuery<T>> {
 
   @override
   Widget build(BuildContext context) {
+    final generation = _queryGeneration;
+    void act(VoidCallback action) {
+      if (mounted && generation == _queryGeneration) action();
+    }
+
     return widget.builder(
       context,
       ConvexPaginatedQuerySnapshot<T>(
@@ -410,8 +477,11 @@ class _PaginatedQueryState<T> extends State<_PaginatedQuery<T>> {
         status: _status,
         isDone: _lastResult?.isDone ?? false,
         error: _error,
+        onLoadMore: () => act(_loadMore),
+        onRetry: () => act(() => _restart(onlyIfFailed: true)),
+        onReset: () => act(() => _restart(onlyIfFailed: false)),
       ),
-      _loadMore,
+      () => act(_loadMore),
     );
   }
 }
