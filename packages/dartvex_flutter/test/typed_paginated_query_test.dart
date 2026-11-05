@@ -86,6 +86,84 @@ void main() {
     },
   );
 
+  testWidgets(
+    'generated snapshot exposes retry and reset without changing keys',
+    (tester) async {
+      ConvexPaginatedQuerySnapshot<Map<String, dynamic>>? snapshot;
+      await tester.pumpWidget(
+        host(
+          MessagesPaginateRawQuery.snapshot(
+            snapshotBuilder: (context, value, _) {
+              snapshot = value;
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      final initial = client.paginatedQueryCalls.single.query;
+      initial.emitStreamError(StateError('stream failed'));
+      await tester.pump();
+      expect(snapshot!.status, PaginationStatus.error);
+      snapshot!.retry();
+      await tester.pump();
+      expect(initial.isCanceled, isTrue);
+      expect(client.paginatedQueryCalls, hasLength(2));
+      final retried = client.paginatedQueryCalls.last.query;
+      retried.emitPage([
+        {'value': 'ready'},
+      ], status: ConvexPaginationStatus.canLoadMore);
+      await tester.pump();
+      snapshot!.loadMore();
+      expect(retried.loadMoreCount, 1);
+      snapshot!.reset();
+      await tester.pump();
+      expect(retried.isCanceled, isTrue);
+      expect(snapshot!.items, isEmpty);
+      expect(client.paginatedQueryCalls, hasLength(3));
+    },
+  );
+
+  testWidgets('decode errors can be retried and old controls are inert', (
+    tester,
+  ) async {
+    ConvexPaginatedQuerySnapshot<int>? snapshot;
+    Widget query(String name) => host(
+      ConvexTypedPaginatedQuery<NoArgs, int>.snapshot(
+        query: ConvexPaginatedQueryReference(
+          name: name,
+          encode: (_) => const {},
+          decodeItem: (raw) => (raw as num).toInt(),
+        ),
+        args: const NoArgs(),
+        snapshotBuilder: (context, value, _) {
+          snapshot = value;
+          return const SizedBox();
+        },
+      ),
+    );
+    await tester.pumpWidget(query('numbers:first'));
+    client.paginatedQueryCalls.single.query.emitPage([
+      'invalid',
+    ], status: ConvexPaginationStatus.canLoadMore);
+    await tester.pump();
+    expect(snapshot!.error, isA<TypeError>());
+    snapshot!.retry();
+    await tester.pump();
+    expect(client.paginatedQueryCalls, hasLength(2));
+    final oldSnapshot = snapshot!;
+    await tester.pumpWidget(query('numbers:second'));
+    oldSnapshot.loadMore();
+    oldSnapshot.retry();
+    oldSnapshot.reset();
+    expect(client.paginatedQueryCalls, hasLength(3));
+    final current = snapshot!;
+    await tester.pumpWidget(const SizedBox());
+    current.reset();
+    current.retry();
+    current.loadMore();
+    expect(client.paginatedQueryCalls, hasLength(3));
+  });
+
   testWidgets('generated snapshot supports map fallback and omitted filters', (
     tester,
   ) async {

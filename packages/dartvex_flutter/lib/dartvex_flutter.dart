@@ -63,6 +63,8 @@ export 'src/mutation_builder.dart'
         MutationMode,
         MutationSupersededException,
         MutationCancelledException;
+export 'src/paginated_query_group.dart'
+    show ConvexPaginatedQueryGroup, ConvexPaginatedQueryGroupSnapshot;
 export 'src/paginated_query_builder.dart'
     show
         PaginatedQueryBuilder,
