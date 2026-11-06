@@ -94,7 +94,6 @@ class UnionMetadataRegistry {
         if (objectUnion != null) ...[
           for (final member in objectUnion.members) ...[
             member.className,
-            'is${member.className}',
             for (final field in member.object.value.keys)
               naming.fieldName(field),
           ],

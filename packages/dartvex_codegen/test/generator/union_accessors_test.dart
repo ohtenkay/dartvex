@@ -50,7 +50,7 @@ void main() {
       }),
   ]);
 
-  test('generates common getters and predicates for endpoint-local unions', () {
+  test('generates common getters for endpoint-local unions', () {
     final output = DartGenerator().generate(spec(union));
     final module = output.files['modules/states.dart']!;
     final base = module.substring(
@@ -62,8 +62,8 @@ void main() {
     expect(base, contains('Optional<String> get note;'));
     expect(base, contains('GetTypeResultPhase get phase;'));
     expect(base, contains('GetTypeResultDetails get details;'));
-    expect(base, contains('bool get isAlpha => this is Alpha;'));
-    expect(base, contains('bool get isBeta => this is Beta;'));
+    expect(base, isNot(contains('get isAlpha')));
+    expect(base, isNot(contains('get isBeta')));
     for (final name in ['different', 'presence', 'alphaOnly', 'kind']) {
       expect(base, isNot(contains('get $name')));
     }
@@ -72,7 +72,7 @@ void main() {
   });
 
   test(
-    'compiled getters preserve optionality and predicates identify each variant',
+    'compiled getters preserve optionality and type checks identify each variant',
     () async {
       final output = DartGenerator().generate(spec(union));
       final directory = await Directory.systemTemp.createTemp(
@@ -101,7 +101,7 @@ void main() {
     final GetTypeResultPhase phase = value.phase;
     check(name == 'Name' && end == null && phase.value == 'early');
     check(value.details.count == 2.0 && !value.note.isDefined);
-    check(value.isAlpha == (kind == 'alpha') && value.isBeta == (kind == 'beta'));
+    check((value is Alpha) == (kind == 'alpha') && (value is Beta) == (kind == 'beta'));
     final encoded = getValueQueryReference.encodeResult(value) as Map;
     check(!encoded.containsKey('note') && encoded['kind'] == kind);
     raw['note'] = 'Note';
@@ -118,30 +118,22 @@ void main() {
     },
   );
 
-  test(
-    'rejects predicates colliding with fields in any variant after normalization',
-    () {
-      for (final name in ['isAlpha', 'is-alpha']) {
-        final collision = ConvexUnionType([
-          ConvexObjectType({'kind': field(const ConvexLiteralType('alpha'))}),
-          ConvexObjectType({
-            'kind': field(const ConvexLiteralType('beta')),
-            name: field(const ConvexBooleanType()),
-          }),
-        ]);
-        expect(
-          () => DartGenerator().generate(spec(collision)),
-          throwsA(
-            isA<TypeMapperException>().having(
-              (error) => error.message,
-              'message',
-              contains('predicate "isAlpha" collides'),
-            ),
-          ),
-        );
-      }
-    },
-  );
+  test('allows fields named like former predicates after normalization', () {
+    for (final name in ['isAlpha', 'is-alpha']) {
+      final collision = ConvexUnionType([
+        ConvexObjectType({'kind': field(const ConvexLiteralType('alpha'))}),
+        ConvexObjectType({
+          'kind': field(const ConvexLiteralType('beta')),
+          name: field(const ConvexBooleanType()),
+        }),
+      ]);
+      final output = DartGenerator().generate(spec(collision));
+      expect(
+        output.files['modules/states.dart'],
+        contains('final bool isAlpha;'),
+      );
+    }
+  });
 
   test('supports custom discriminators and normalized variant names', () {
     final custom = ConvexUnionType([
@@ -151,11 +143,11 @@ void main() {
     final output = DartGenerator(discriminator: 'state').generate(spec(custom));
     expect(
       output.files['modules/states.dart'],
-      contains('bool get isInProgress => this is InProgress;'),
+      contains('final class InProgress extends GetTypeResult'),
     );
     expect(
       output.files['modules/states.dart'],
-      contains('bool get isDone => this is Done;'),
+      contains('final class Done extends GetTypeResult'),
     );
   });
 }

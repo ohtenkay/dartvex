@@ -14,8 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Paginated references share codecs with the Flutter runtime.
 
 - Discriminated union bases expose abstract getters for fields whose validator
-  types and optionality match in every variant, and `is<Variant>` boolean
-  predicates. Predicate/schema-field name collisions fail generation clearly.
+  types and optionality match in every variant.
   Common enum and object fields reuse one generated Dart type across variants.
 
 - Shared `<TableName>Document` types for complete table documents, including
@@ -58,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   import diagnostics.
 
 ### Changed (fork)
+
+- Discriminated unions no longer generate `is<Variant>` boolean predicates. Use
+  Dart type checks such as `value is Party` to identify and promote variants.
+  Schema fields and metadata can use the former predicate names.
 
 - Complete-document result types in project-generated bindings now use
   `<TableName>Document` names instead of endpoint-specific names. Callers must
