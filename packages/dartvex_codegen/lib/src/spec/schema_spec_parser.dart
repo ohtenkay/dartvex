@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'spec_parser.dart';
 import 'schema_spec.dart';
+import '../types/union_metadata.dart';
 
 /// Parses JSON returned by Convex's `SchemaDefinition.export()`.
 class SchemaSpecParser {
@@ -48,6 +49,47 @@ class SchemaSpecParser {
       );
     }
 
-    return SchemaSpec(tables: tables, warnings: warnings);
+    final rawMetadata = decoded.containsKey('dartvexUnionMetadata')
+        ? decoded['dartvexUnionMetadata']
+        : <dynamic>[];
+    if (rawMetadata is! List) {
+      throw SpecParserException('dartvexUnionMetadata must be a list');
+    }
+    final metadata = <UnionMetadata>[];
+    for (final entry in rawMetadata) {
+      if (entry is! Map ||
+          entry['validator'] is! Map ||
+          entry['variants'] is! Map) {
+        throw SpecParserException(
+          'Union metadata requires validator and variants objects',
+        );
+      }
+      final variants = <String, Map<String, Object?>>{};
+      for (final variant in (entry['variants'] as Map).entries) {
+        if (variant.key is! String || variant.value is! Map) {
+          throw SpecParserException(
+            'Union metadata variants must be objects keyed by string values',
+          );
+        }
+        variants[variant.key as String] = Map<String, Object?>.from(
+          variant.value as Map,
+        );
+      }
+      metadata.add(
+        UnionMetadata(
+          validator: const SpecParser().parseTypeMap(
+            (entry['validator'] as Map).cast<String, dynamic>(),
+            context: 'union metadata',
+            warnings: warnings,
+          ),
+          variants: variants,
+        ),
+      );
+    }
+    return SchemaSpec(
+      tables: tables,
+      warnings: warnings,
+      unionMetadata: metadata,
+    );
   }
 }

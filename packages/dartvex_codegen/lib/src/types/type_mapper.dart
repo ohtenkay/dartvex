@@ -5,6 +5,7 @@ import 'dart_type.dart';
 import 'discriminated_union.dart';
 import 'schema_type_registry.dart';
 import 'type_identity.dart';
+import 'union_metadata.dart';
 
 /// Renders encode and decode expressions for a generated value.
 typedef ExpressionRenderer = String Function(String expression);
@@ -29,6 +30,7 @@ class TypeRenderContext {
   TypeRenderContext({
     Naming? naming,
     this.schemaTypes,
+    this.unionMetadata,
     this.discriminator = 'kind',
     this.externalTypeNames = const <String>{},
     this.emitCodecs = true,
@@ -39,6 +41,9 @@ class TypeRenderContext {
 
   /// Shared schema types available while mapping endpoint validators.
   final SchemaTypeRegistry? schemaTypes;
+
+  /// Variant constants that do not participate in wire codecs.
+  final UnionMetadataRegistry? unionMetadata;
 
   /// Object-union discriminator field.
   final String discriminator;
@@ -581,6 +586,16 @@ class TypeMapper {
         seen[name] = i;
       }
 
+      final metadata =
+          context.unionMetadata?.resolve(union) ??
+          const <UnionMetadataProperty>[];
+      for (final property in metadata) {
+        if (enumNames.contains(property.name)) {
+          throw TypeMapperException(
+            'Union metadata property "${property.name}" collides with an enum value in "$typeName".',
+          );
+        }
+      }
       final enumBuffer = StringBuffer('enum $typeName {\n');
       for (var index = 0; index < literals.length; index += 1) {
         final literal = literals[index];
@@ -593,7 +608,19 @@ class TypeMapper {
         ..writeln(';')
         ..writeln()
         ..writeln('  const $typeName(this.value);')
-        ..writeln('  final Object? value;')
+        ..writeln('  final Object? value;');
+      for (final property in metadata) {
+        enumBuffer.writeln(
+          '  ${property.annotation} get ${property.name} => switch (this) {',
+        );
+        for (var index = 0; index < literals.length; index++) {
+          enumBuffer.writeln(
+            '    $typeName.${enumNames[index]} => ${property.values[literals[index].value]},',
+          );
+        }
+        enumBuffer.writeln('  };');
+      }
+      enumBuffer
         ..writeln()
         ..writeln('  static $typeName fromJson(dynamic raw) {')
         ..writeln('    switch (raw) {');
@@ -711,6 +738,14 @@ class TypeMapper {
     final declaration = StringBuffer(
       'sealed class $typeName {\n  const $typeName();\n',
     );
+    final metadata =
+        context.unionMetadata?.resolve(
+          ConvexUnionType([for (final member in union.members) member.object]),
+        ) ??
+        const <UnionMetadataProperty>[];
+    for (final property in metadata) {
+      declaration.writeln('  ${property.annotation} get ${property.name};');
+    }
     final commonFields = <String, _DiscriminatedField>{};
     for (final entry in union.members.first.object.value.entries) {
       if (entry.key == union.discriminator) continue;
@@ -826,6 +861,11 @@ class TypeMapper {
             ..writeln()
             ..writeln('  final $annotation ${field.name};');
         }
+      }
+      for (final property in metadata) {
+        declaration.writeln(
+          '  @override\n  ${property.annotation} get ${property.name} => ${property.values[member.literal]};',
+        );
       }
       declaration.writeln('}');
 
