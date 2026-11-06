@@ -18,3 +18,4 @@ export 'src/types/discriminated_union.dart';
 export 'src/types/schema_type_registry.dart';
 export 'src/types/type_identity.dart';
 export 'src/types/type_mapper.dart';
+export 'src/types/union_metadata.dart';

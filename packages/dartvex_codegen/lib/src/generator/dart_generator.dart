@@ -4,6 +4,7 @@ import '../spec/function_spec.dart';
 import '../spec/schema_spec.dart';
 import '../types/schema_type_registry.dart';
 import '../types/type_mapper.dart';
+import '../types/union_metadata.dart';
 import 'imports.dart';
 import 'naming.dart';
 import 'string_literals.dart';
@@ -72,6 +73,7 @@ class DartGenerator {
   final bool generateFlutterWidgets;
 
   SchemaTypeRegistry? _schemaTypes;
+  UnionMetadataRegistry? _unionMetadata;
   Set<String> _externalTypeNames = const <String>{};
   Set<String> _sharedTableNames = const <String>{};
 
@@ -85,6 +87,11 @@ class DartGenerator {
             discriminator: discriminator,
             naming: _naming,
           );
+    _unionMetadata = UnionMetadataRegistry(
+      schema?.unionMetadata ?? const [],
+      discriminator: discriminator,
+      naming: _naming,
+    );
     final root = _buildTree(spec);
     final files = <String, String>{};
 
@@ -159,6 +166,7 @@ class DartGenerator {
       discriminator: discriminator,
       emitCodecs: false,
       schemaTypes: registry,
+      unionMetadata: _unionMetadata,
     );
     final mapper = TypeMapper(naming: _naming);
     for (final sharedType in registry.types) {
@@ -285,6 +293,7 @@ class DartGenerator {
       final typeContext = TypeRenderContext(
         naming: _naming,
         schemaTypes: _schemaTypes,
+        unionMetadata: _unionMetadata,
         discriminator: discriminator,
         externalTypeNames: _externalTypeNames,
       );
@@ -353,6 +362,7 @@ class DartGenerator {
     final typeContext = TypeRenderContext(
       naming: _naming,
       schemaTypes: _schemaTypes,
+      unionMetadata: _unionMetadata,
       discriminator: discriminator,
       externalTypeNames: _externalTypeNames,
     );
@@ -1132,6 +1142,7 @@ String describeType(dynamic value) {
     final context = TypeRenderContext(
       naming: _naming,
       schemaTypes: _schemaTypes,
+      unionMetadata: _unionMetadata,
       discriminator: discriminator,
       externalTypeNames: _externalTypeNames,
     );

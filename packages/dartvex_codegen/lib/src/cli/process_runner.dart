@@ -129,8 +129,33 @@ class SystemProcessRunner implements ProcessRunner, SchemaProcessRunner {
       final entrypoint = File(path.join(temporaryDirectory.path, 'schema.mjs'));
       final bundle = path.join(temporaryDirectory.path, 'schema.cjs');
       await entrypoint.writeAsString(
-        'import schema from ${jsonEncode(resolvedSchema)};\n'
-        'process.stdout.write(schema.export());\n',
+        'import schema, * as module from ${jsonEncode(resolvedSchema)};\n'
+        'const exported = JSON.parse(schema.export());\n'
+        'if (module.dartvexUnionMetadata !== undefined) {\n'
+        '  if (!Array.isArray(module.dartvexUnionMetadata)) {\n'
+        '    throw new Error("dartvexUnionMetadata must be an array");\n'
+        '  }\n'
+        '  exported.dartvexUnionMetadata = module.dartvexUnionMetadata.map(\n'
+        '    ({validator, variants}) => {\n'
+        '      if (!validator || !variants || typeof variants !== "object" || Array.isArray(variants)) {\n'
+        '        throw new Error("Union metadata requires validator and variants objects");\n'
+        '      }\n'
+        '      for (const properties of Object.values(variants)) {\n'
+        '        if (!properties || typeof properties !== "object" || Array.isArray(properties)) {\n'
+        '          throw new Error("Union metadata variants must be objects");\n'
+        '        }\n'
+        '        for (const value of Object.values(properties)) {\n'
+        '          if (value !== null && !["string", "boolean", "number"].includes(typeof value) ||\n'
+        '              typeof value === "number" && !Number.isFinite(value)) {\n'
+        '            throw new Error("Union metadata values must be finite JSON scalars");\n'
+        '          }\n'
+        '        }\n'
+        '      }\n'
+        '      return {validator: validator.json, variants};\n'
+        '    },\n'
+        '  );\n'
+        '}\n'
+        'process.stdout.write(JSON.stringify(exported));\n',
       );
 
       ProcessRunnerException? lastFailure;
