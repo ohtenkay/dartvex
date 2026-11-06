@@ -777,23 +777,6 @@ class TypeMapper {
           : mapped.annotation;
       declaration.writeln('  $annotation get $name;');
     }
-    for (final member in union.members) {
-      final predicate = 'is${member.className}';
-      if (union.members.any(
-        (variant) => variant.object.value.keys.any(
-          (rawName) =>
-              rawName != union.discriminator &&
-              _naming.fieldName(rawName) == predicate,
-        ),
-      )) {
-        throw TypeMapperException(
-          'Generated predicate "$predicate" collides with a schema field in "$typeName".',
-        );
-      }
-      declaration.writeln(
-        '  bool get $predicate => this is ${member.className};',
-      );
-    }
     declaration.writeln('}');
     final encodeCases = <String>[];
     final decodeCases = <String>[];

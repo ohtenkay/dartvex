@@ -760,8 +760,8 @@ void main() {
   check(numbersPaginatedQueryReference.decodeItem(42) == 42.0);
   final encoded = numbersPaginatedQueryReference.encode((builder: 'b', client: 'c', queryBuilder: 'q'));
   check(jsonEncode(encoded) == jsonEncode({'builder': 'b', 'client': 'c', 'query_builder': 'q'}));
-  check(eventsPaginatedQueryReference.decodeItem({'kind': 'text', 'text': 'hello'}).isText);
-  check(eventsPaginatedQueryReference.decodeItem({'kind': 'image', 'url': 'url'}).isImage);
+  check(eventsPaginatedQueryReference.decodeItem({'kind': 'text', 'text': 'hello'}) is Text);
+  check(eventsPaginatedQueryReference.decodeItem({'kind': 'image', 'url': 'url'}) is Image);
 }
 ''');
         final result = await Process.run(Platform.resolvedExecutable, [

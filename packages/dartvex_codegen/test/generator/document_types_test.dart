@@ -137,6 +137,7 @@ void main() {
       final script = File(path.join(directory.path, 'check.dart'));
       await script.writeAsString('''
 import 'modules/session.dart';
+import 'types.dart';
 void check(bool condition) { if (!condition) throw StateError('Check failed'); }
 void main() {
   for (final kind in ['session', 'party']) {
@@ -144,7 +145,7 @@ void main() {
     final decoded = getValueQueryReference.decode(raw);
     check(decoded.id.value == 'session-id' && decoded.creationTime == 123.0);
     check(decoded.name == 'Evening');
-    check(decoded.isSession == (kind == 'session') && decoded.isParty == (kind == 'party'));
+    check((decoded is Session) == (kind == 'session') && (decoded is Party) == (kind == 'party'));
     final encoded = getValueQueryReference.encodeResult!(decoded) as Map;
     check(encoded.length == raw.length && raw.keys.every((key) => encoded[key] == raw[key]));
     check(findQueryReference.decode(raw).runtimeType == decoded.runtimeType);
@@ -153,7 +154,7 @@ void main() {
     check(reorderedQueryReference.decode(raw).runtimeType == decoded.runtimeType);
   }
   final roleArgs = setRoleQueryReference.decodeArgs({'role': {'kind': 'admin'}});
-  check(roleArgs.role.isAdmin && !roleArgs.role.isMember);
+  check(roleArgs.role is Admin && roleArgs.role is! Member);
   check(((setRoleQueryReference.encode(roleArgs) as Map)['role'] as Map)['kind'] == 'admin');
   check(findQueryReference.decode(null) == null);
   check(findQueryReference.encodeResult!(null) == null);

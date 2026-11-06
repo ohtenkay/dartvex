@@ -187,9 +187,6 @@ sealed class SessionDocument {
 
   SessionId get id;
   String get name;
-
-  bool get isSession => this is Session;
-  bool get isParty => this is Party;
 }
 final class Session extends SessionDocument { /* ... */ }
 final class Party extends SessionDocument { /* ... */ }
@@ -208,11 +205,8 @@ nested objects also share their generated Dart types. Fields with different
 validators, missing fields, and fields with differing optionality stay on the
 concrete variants. The discriminator remains a wire-only field.
 
-The base also exposes `is<Variant>` boolean getters for every variant, including
-unions without any common fields. Predicate names follow the generated subclass
-names, and generation fails if a predicate collides with a schema field name.
-These getters help with UI decisions; use Dart's `value is Party` check to
-promote a value before accessing party-specific fields.
+Use Dart's `value is Party` check to promote a value before accessing
+party-specific fields.
 
 Nested schema object unions are also shared. Their field name supplies the base
 name, and they keep their existing naming convention without a `Document`
