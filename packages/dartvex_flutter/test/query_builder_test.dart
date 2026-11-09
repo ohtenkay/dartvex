@@ -317,6 +317,43 @@ void main() {
 
     expect(snapshot.data, 'fresh');
   });
+
+  testWidgets('retry ignores late events from the failed subscription', (
+    tester,
+  ) async {
+    final client = _StaleEventRuntimeClient();
+    addTearDown(() async {
+      for (final subscription in client.subscriptions) {
+        await subscription.close();
+      }
+    });
+    late ConvexQuerySnapshot<String> snapshot;
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: ConvexQuery<String>(
+          query: 'messages:list',
+          client: client,
+          decode: (raw) => raw as String,
+          builder: (context, value) {
+            snapshot = value;
+            return Text(value.data ?? 'empty');
+          },
+        ),
+      ),
+    );
+    final first = client.subscriptions.single;
+    first.emitSuccess(123);
+    await tester.pump();
+    expect(snapshot.hasError, isTrue);
+    snapshot.retry();
+    await tester.pump();
+    client.subscriptions.last.emitSuccess('fresh');
+    await tester.pump();
+    first.emitSuccess('stale');
+    await tester.pump();
+    expect(snapshot.data, 'fresh');
+  });
 }
 
 class _StaleEventRuntimeClient extends FakeRuntimeClient {
@@ -342,7 +379,7 @@ class _StaleEventSubscription implements ConvexRuntimeSubscription {
   @override
   Stream<ConvexRuntimeQueryEvent> get stream => _controller.stream;
 
-  void emitSuccess(String value) {
+  void emitSuccess(dynamic value) {
     _controller.add(ConvexRuntimeQuerySuccess(value));
   }
 
