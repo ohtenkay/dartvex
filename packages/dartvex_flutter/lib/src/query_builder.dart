@@ -24,6 +24,22 @@ class ConvexQuery<T> extends StatefulWidget {
     this.client,
   });
 
+  /// Returns the nearest query's retry action for a custom error builder.
+  ///
+  /// Use the builder's context, including in generated typed query widgets:
+  /// `onPressed: ConvexQuery.retryOf(context)`.
+  /// The action has the same semantics as [ConvexQuerySnapshot.retry].
+  static VoidCallback retryOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<_QueryRetryScope>();
+    if (scope == null) {
+      throw FlutterError(
+        'ConvexQuery.retryOf requires a query builder context.',
+      );
+    }
+    return scope.retry;
+  }
+
   /// Convex query name to subscribe to.
   final String query;
 
@@ -92,7 +108,23 @@ class _ConvexQueryState<T> extends State<ConvexQuery<T>> {
 
   @override
   Widget build(BuildContext context) {
-    return widget.builder(context, _snapshot);
+    final generation = _subscriptionGeneration;
+    void retry() {
+      if (!mounted ||
+          generation != _subscriptionGeneration ||
+          !_snapshot.hasError) {
+        return;
+      }
+      _subscribe(_runtimeClient!, preserveData: _snapshot.hasData);
+    }
+
+    return _QueryRetryScope(
+      retry: retry,
+      child: Builder(
+        builder: (context) =>
+            widget.builder(context, _snapshot.copyWith(onRetry: retry)),
+      ),
+    );
   }
 
   void _cancelSubscription() {
@@ -231,4 +263,13 @@ class _DecodeException implements Exception {
 
   @override
   String toString() => error.toString();
+}
+
+class _QueryRetryScope extends InheritedWidget {
+  const _QueryRetryScope({required this.retry, required super.child});
+  final VoidCallback retry;
+
+  @override
+  bool updateShouldNotify(_QueryRetryScope oldWidget) =>
+      retry != oldWidget.retry;
 }

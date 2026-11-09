@@ -31,11 +31,13 @@ class ConvexQuerySnapshot<T> {
     required this.hasError,
     required this.source,
     required this.hasPendingWrites,
-  });
+    void Function()? onRetry,
+  }) : _onRetry = onRetry;
 
   /// Creates the initial loading snapshot for a query.
   const ConvexQuerySnapshot.initial()
-    : data = null,
+    : _onRetry = null,
+      data = null,
       error = null,
       isLoading = true,
       isRefreshing = false,
@@ -43,6 +45,16 @@ class ConvexQuerySnapshot<T> {
       hasError = false,
       source = ConvexQuerySource.unknown,
       hasPendingWrites = false;
+
+  final void Function()? _onRetry;
+
+  /// Restarts the subscription after a query, stream, or decoding error.
+  ///
+  /// Keeps the last successful value while refreshing. Does nothing unless
+  /// the current query has failed. Callbacks captured before input changes
+  /// or disposal are inert.
+  /// Manually constructed snapshots without a callback do nothing.
+  void retry() => _onRetry?.call();
 
   /// Latest decoded data, if available.
   final T? data;
@@ -79,6 +91,7 @@ class ConvexQuerySnapshot<T> {
     bool? hasError,
     ConvexQuerySource? source,
     bool? hasPendingWrites,
+    void Function()? onRetry,
   }) {
     return ConvexQuerySnapshot<T>(
       data: identical(data, _snapshotSentinel) ? this.data : data as T?,
@@ -89,6 +102,7 @@ class ConvexQuerySnapshot<T> {
       hasError: hasError ?? this.hasError,
       source: source ?? this.source,
       hasPendingWrites: hasPendingWrites ?? this.hasPendingWrites,
+      onRetry: onRetry ?? _onRetry,
     );
   }
 }
