@@ -118,6 +118,77 @@ void main() {
     },
   );
 
+  test(
+    'compiled copyWith keeps the variant and handles nullable fields',
+    () async {
+      final output = DartGenerator().generate(spec(union));
+      final module = output.files['modules/states.dart']!;
+      expect(module, contains('GetTypeResult copyWith({'));
+      expect(module, contains('Alpha copyWith({'));
+      expect(module, contains('Beta copyWith({'));
+      final directory = await Directory.systemTemp.createTemp('dartvex_copy_');
+      addTearDown(() => directory.delete(recursive: true));
+      for (final entry in output.files.entries) {
+        final file = File(path.join(directory.path, entry.key));
+        await file.parent.create(recursive: true);
+        await file.writeAsString(entry.value);
+      }
+      final script = File(path.join(directory.path, 'check.dart'));
+      await script.writeAsString('''
+import 'modules/states.dart';
+import 'runtime.dart';
+void check(bool value) { if (!value) throw StateError('Check failed'); }
+void main() {
+  for (final kind in ['alpha', 'beta']) {
+    final raw = <String, dynamic>{
+      'kind': kind, 'name': 'Name', 'endedAt': null, 'phase': 'early',
+      'details': {'count': 2.0}, 'different': kind == 'alpha' ? 'Text' : 3.0,
+      'presence': 'present', if (kind == 'alpha') 'alphaOnly': true,
+    };
+    final GetTypeResult value = getValueQueryReference.decode(raw);
+    final renamed = value.copyWith(name: 'Other');
+    check(renamed.runtimeType == value.runtimeType);
+    check(renamed.name == 'Other' && renamed.details.count == 2.0);
+    final ended = renamed.copyWith(endedAt: const Optional.of(5.0));
+    check(ended.endedAt == 5.0 && ended.copyWith().endedAt == 5.0);
+    check(ended.copyWith(endedAt: const Optional.of(null)).endedAt == null);
+    check(value.copyWith(note: const Optional.of('Note')).note.value == 'Note');
+    check(!value.copyWith(note: const Optional.absent()).note.isDefined);
+    if (value is Alpha) {
+      final Alpha copy = value.copyWith(alphaOnly: false, name: 'Copy');
+      check(!copy.alphaOnly && copy.name == 'Copy' && copy.different == 'Text');
+    }
+  }
+}
+''');
+      final result = await Process.run(Platform.resolvedExecutable, [
+        '--packages=${path.absolute('.dart_tool/package_config.json')}',
+        script.path,
+      ]);
+      expect(result.exitCode, 0, reason: '${result.stdout}\n${result.stderr}');
+    },
+  );
+
+  test('rejects a field that would collide with copyWith', () {
+    final collision = ConvexUnionType([
+      ConvexObjectType({'kind': field(const ConvexLiteralType('alpha'))}),
+      ConvexObjectType({
+        'kind': field(const ConvexLiteralType('beta')),
+        'copyWith': field(const ConvexBooleanType()),
+      }),
+    ]);
+    expect(
+      () => DartGenerator().generate(spec(collision)),
+      throwsA(
+        isA<TypeMapperException>().having(
+          (error) => error.message,
+          'message',
+          contains('reserved for the generated copy method'),
+        ),
+      ),
+    );
+  });
+
   test('allows fields named like former predicates after normalization', () {
     for (final name in ['isAlpha', 'is-alpha']) {
       final collision = ConvexUnionType([
