@@ -92,6 +92,7 @@ class UnionMetadataRegistry {
           'fromJson',
         ],
         if (objectUnion != null) ...[
+          'copyWith',
           for (final member in objectUnion.members) ...[
             member.className,
             for (final field in member.object.value.keys)

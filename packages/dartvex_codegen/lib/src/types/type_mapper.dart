@@ -777,6 +777,17 @@ class TypeMapper {
           : mapped.annotation;
       declaration.writeln('  $annotation get $name;');
     }
+    if (commonFields.isNotEmpty) {
+      declaration
+        ..writeln()
+        ..writeln(
+          _renderCopyWithSignature(
+            typeName,
+            commonFields.values,
+            abstract: true,
+          ),
+        );
+    }
     declaration.writeln('}');
     final encodeCases = <String>[];
     final decodeCases = <String>[];
@@ -793,6 +804,12 @@ class TypeMapper {
           continue;
         }
         final safeName = _naming.fieldName(rawName);
+        if (safeName == 'copyWith') {
+          throw TypeMapperException(
+            'Field "$rawName" in "$className" maps to Dart name "copyWith", '
+            'which is reserved for the generated copy method.',
+          );
+        }
         (safeNameToRaw[safeName] ??= <String>[]).add(rawName);
       }
       for (final entry in safeNameToRaw.entries) {
@@ -844,6 +861,15 @@ class TypeMapper {
             ..writeln()
             ..writeln('  final $annotation ${field.name};');
         }
+        declaration
+          ..writeln()
+          ..writeln(
+            _renderVariantCopyWith(
+              className,
+              fields,
+              overridesBase: commonFields.isNotEmpty,
+            ),
+          );
       }
       for (final property in metadata) {
         declaration.writeln(
@@ -1249,6 +1275,70 @@ class _UnionCase {
 
   final String className;
   final MappedType mappedType;
+}
+
+/// Whether [type] already accepts null, so `copyWith` needs [Optional] to tell
+/// "set to null" apart from "keep".
+bool _acceptsNull(MappedType type) =>
+    type.dartType is DartNullableType ||
+    type.annotation == 'dynamic' ||
+    type.annotation == 'Null';
+
+String _copyWithParameter(_DiscriminatedField field, {required bool abstract}) {
+  final annotation = field.mappedType.annotation;
+  if (field.optional) {
+    return 'Optional<$annotation>? ${field.name}';
+  }
+  if (_acceptsNull(field.mappedType)) {
+    return 'Optional<$annotation> ${field.name}'
+        '${abstract ? '' : ' = const Optional.absent()'}';
+  }
+  return '$annotation? ${field.name}';
+}
+
+String _copyWithArgument(_DiscriminatedField field) {
+  final name = field.name;
+  if (!field.optional && _acceptsNull(field.mappedType)) {
+    return '$name.isDefined ? $name.value : this.$name';
+  }
+  return '$name ?? this.$name';
+}
+
+const _copyWithDoc =
+    '  /// Returns a copy with the given fields replaced. Nullable fields take\n'
+    '  /// an [Optional], so `Optional.of(null)` clears them.\n';
+
+/// `copyWith` on a sealed base, over the fields every variant shares. Each
+/// variant overrides it, so callers need not match on the variant.
+String _renderCopyWithSignature(
+  String typeName,
+  Iterable<_DiscriminatedField> fields, {
+  required bool abstract,
+}) {
+  final buffer = StringBuffer(_copyWithDoc)..writeln('  $typeName copyWith({');
+  for (final field in fields) {
+    buffer.writeln('    ${_copyWithParameter(field, abstract: abstract)},');
+  }
+  buffer.write('  });');
+  return buffer.toString();
+}
+
+String _renderVariantCopyWith(
+  String className,
+  List<_DiscriminatedField> fields, {
+  required bool overridesBase,
+}) {
+  final buffer = StringBuffer(overridesBase ? '  @override\n' : _copyWithDoc)
+    ..writeln('  $className copyWith({');
+  for (final field in fields) {
+    buffer.writeln('    ${_copyWithParameter(field, abstract: false)},');
+  }
+  buffer.writeln('  }) => $className(');
+  for (final field in fields) {
+    buffer.writeln('    ${field.name}: ${_copyWithArgument(field)},');
+  }
+  buffer.write('  );');
+  return buffer.toString();
 }
 
 class _DiscriminatedField {
