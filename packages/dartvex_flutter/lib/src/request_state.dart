@@ -32,6 +32,24 @@ mixin ConvexRequestState<W extends StatefulWidget, Args, T>
   /// The current request snapshot.
   ConvexRequestSnapshot<T> get requestSnapshot => _requestSnapshot;
 
+  /// Client captured by the current widget identity.
+  @protected
+  ConvexRuntimeClient get requestClient => _runtimeClient!;
+
+  /// Generation used to discard completions from an invalidated request.
+  @protected
+  int get requestGeneration => _requestGeneration;
+
+  /// Publishes request state using the build-safe rebuild scheduler.
+  @protected
+  void updateRequestSnapshot(ConvexRequestSnapshot<T> snapshot) {
+    applyAndRebuild(() => _requestSnapshot = snapshot);
+  }
+
+  /// Releases queued work when the request identity changes or the owner exits.
+  @protected
+  void onRequestInvalidated() {}
+
   /// The explicit client override of the widget, if any.
   @protected
   ConvexRuntimeClient? get clientOverride;
@@ -61,7 +79,7 @@ mixin ConvexRequestState<W extends StatefulWidget, Args, T>
     }
     if (_runtimeClient != resolvedClient) {
       _runtimeClient = resolvedClient;
-      _invalidateRequestState();
+      invalidateRequestState();
     }
   }
 
@@ -75,13 +93,14 @@ mixin ConvexRequestState<W extends StatefulWidget, Args, T>
     final identityChanged = nameChanged || _runtimeClient != resolvedClient;
     _runtimeClient = resolvedClient;
     if (identityChanged) {
-      _invalidateRequestState();
+      invalidateRequestState();
     }
   }
 
   @override
   void dispose() {
     _requestGeneration += 1;
+    onRequestInvalidated();
     super.dispose();
   }
 
@@ -168,13 +187,13 @@ mixin ConvexRequestState<W extends StatefulWidget, Args, T>
     return future;
   }
 
-  void _invalidateRequestState() {
+  /// Resets the snapshot and releases work belonging to the old identity.
+  @protected
+  void invalidateRequestState() {
     _requestGeneration += 1;
     _inFlight = null;
-    if (!mounted) {
-      return;
-    }
-    // Only called from lifecycle callbacks, which are followed by a build.
     _requestSnapshot = ConvexRequestSnapshot<T>.initial();
+    onRequestInvalidated();
+    applyAndRebuild(() {});
   }
 }

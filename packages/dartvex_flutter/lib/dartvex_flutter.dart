@@ -21,6 +21,7 @@ export 'package:dartvex/dartvex.dart'
         OptimisticLocalStore,
         OptimisticQueryEntry,
         OptimisticUpdate,
+        OptimisticUpdateHandle,
         defaultHttpClientFactory,
         defaultWebSocketAdapterOverride;
 
@@ -64,7 +65,13 @@ export 'src/connection_builder.dart'
 export 'src/connection_indicator.dart'
     show ConvexConnectionIndicator, ConvexConnectionIndicatorBuilder;
 export 'src/connectivity.dart' show ConnectivityPlusSignal;
-export 'src/mutation_builder.dart' show ConvexMutation, ConvexMutationBuilder;
+export 'src/mutation_builder.dart'
+    show
+        ConvexMutation,
+        ConvexMutationBuilder,
+        MutationMode,
+        MutationSupersededException,
+        MutationCancelledException;
 export 'src/paginated_query_builder.dart'
     show
         PaginatedQueryBuilder,
@@ -79,6 +86,7 @@ export 'src/runtime_client.dart'
         ConvexConnectionState,
         ConvexFunctionCallerSource,
         ConvexRuntimeClient,
+        ConvexRuntimeIdentitySource,
         ConvexRuntimeFunctionCaller,
         ConvexRuntimePaginatedQuery,
         ConvexRuntimeQueryError,

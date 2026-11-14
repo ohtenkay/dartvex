@@ -482,6 +482,7 @@ class ConvexClient implements ConvexFunctionCaller, DartvexLogSource {
   Future<void>? _startFuture;
   Future<void>? _closeFuture;
   bool _disposed = false;
+  int _nextOptimisticId = -1;
 
   /// The server's FatalError message once the connection was terminated for
   /// good; new requests fail fast instead of hanging. See [_fatalException].
@@ -1036,6 +1037,35 @@ class ConvexClient implements ConvexFunctionCaller, DartvexLogSource {
       name: name,
       args: args,
       pageSize: pageSize,
+    );
+  }
+
+  /// Changes when query state is invalidated for a new auth identity.
+  /// Queued client work can use this to avoid crossing identity boundaries.
+  int get queryIdentityGeneration => _baseClient.queryIdentityGeneration;
+
+  /// Applies a local optimistic layer that can be replaced before a queued
+  /// mutation is sent. Dispose it after server confirmation or abandonment.
+  OptimisticUpdateHandle createOptimisticUpdate(OptimisticUpdate update) {
+    _assertNotDisposed();
+    final identity = _baseClient.queryIdentityGeneration;
+    final id = _nextOptimisticId--;
+    _dispatchOptimisticEvents(_baseClient.replaceOptimisticUpdate(update, id));
+    return OptimisticUpdateHandle(
+      onReplace: (next) {
+        _assertNotDisposed();
+        if (identity != _baseClient.queryIdentityGeneration) {
+          throw StateError(
+              'Optimistic update belongs to a previous auth identity.');
+        }
+        _dispatchOptimisticEvents(
+            _baseClient.replaceOptimisticUpdate(next, id));
+      },
+      onDispose: () {
+        if (!_disposed && identity == _baseClient.queryIdentityGeneration) {
+          _dispatchOptimisticEvents(_baseClient.removeOptimisticUpdate(id));
+        }
+      },
     );
   }
 

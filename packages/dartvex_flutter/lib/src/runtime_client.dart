@@ -9,6 +9,12 @@ import 'snapshot.dart';
 /// Alias for the connection states emitted by the underlying Dartvex client.
 typedef ConvexConnectionState = convex.ConnectionState;
 
+/// Optional identity tracking for runtimes that change authenticated users.
+abstract interface class ConvexRuntimeIdentitySource {
+  /// Changes when queued work must no longer run under the current identity.
+  int get queryIdentityGeneration;
+}
+
 /// Runtime interface consumed by Flutter widgets in this package.
 abstract class ConvexRuntimeClient {
   /// Creates a runtime client abstraction.
@@ -45,6 +51,11 @@ abstract class ConvexRuntimeClient {
     Map<String, dynamic> args = const {},
     convex.OptimisticUpdate? optimisticUpdate,
   ]);
+
+  /// Creates a replaceable local optimistic layer for queued mutations.
+  convex.OptimisticUpdateHandle createOptimisticUpdate(
+    convex.OptimisticUpdate update,
+  );
 
   /// Executes an action.
   Future<dynamic> action(String name, [Map<String, dynamic> args = const {}]);
@@ -227,13 +238,19 @@ class ConvexRuntimeQueryError extends ConvexRuntimeQueryEvent {
 /// descendants resubscribe on every rebuild. Creating the wrapper once is
 /// still the recommended pattern.
 class ConvexClientRuntime
-    implements ConvexRuntimeClient, ConvexFunctionCallerSource {
+    implements
+        ConvexRuntimeClient,
+        ConvexFunctionCallerSource,
+        ConvexRuntimeIdentitySource {
   /// Creates a runtime adapter around [_client].
   ///
   /// When [disposeClient] is true, disposing this runtime also disposes the client.
   ConvexClientRuntime(this._client, {this.disposeClient = false});
 
   final convex.ConvexClient _client;
+
+  @override
+  int get queryIdentityGeneration => _client.queryIdentityGeneration;
 
   /// Whether disposing this runtime should also dispose the wrapped client.
   final bool disposeClient;
@@ -324,6 +341,11 @@ class ConvexClientRuntime
   ]) {
     return _client.mutate(name, args, optimisticUpdate);
   }
+
+  @override
+  convex.OptimisticUpdateHandle createOptimisticUpdate(
+    convex.OptimisticUpdate update,
+  ) => _client.createOptimisticUpdate(update);
 
   @override
   /// Executes a query through the wrapped client.

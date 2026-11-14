@@ -149,6 +149,13 @@ class FakeRuntimeClient implements ConvexRuntimeClient {
   }
 
   @override
+  OptimisticUpdateHandle createOptimisticUpdate(OptimisticUpdate update) {
+    throw UnsupportedError(
+      'This runtime does not implement optimistic overlays.',
+    );
+  }
+
+  @override
   Future<dynamic> mutate(
     String name, [
     Map<String, dynamic> args = const <String, dynamic>{},
