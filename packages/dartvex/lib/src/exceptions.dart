@@ -1,3 +1,12 @@
+/// Thrown when the caller cancels a file upload.
+class ConvexFileUploadCancelledException implements Exception {
+  /// Creates an upload cancellation exception.
+  const ConvexFileUploadCancelledException();
+
+  @override
+  String toString() => 'ConvexFileUploadCancelledException';
+}
+
 /// Exception thrown when a file upload to Convex storage fails.
 class ConvexFileUploadException implements Exception {
   /// Creates a file upload exception from an HTTP [statusCode] and response [body].
