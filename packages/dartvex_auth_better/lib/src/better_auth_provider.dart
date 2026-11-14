@@ -10,11 +10,12 @@ import 'better_auth_session.dart';
 /// via HTTP endpoints.
 ///
 /// Implements [AuthProvider] so it can be used with
-/// `ConvexClient.withAuth<BetterAuthSession>()`. Drive sign-in, restore and
-/// sign-out through the wrapper (`authedClient.login()`,
-/// `authedClient.loginFromCache()`, `authedClient.logout()`), not through the
-/// raw [BetterAuthClient] session methods, so the Convex client and this
-/// provider stay in sync.
+/// `ConvexClient.withAuth<BetterAuthSession>()`. Drive password sign-in,
+/// restore and sign-out through the wrapper (`authedClient.login()`,
+/// `authedClient.loginFromCache()`, `authedClient.logout()`) so the Convex
+/// client and provider stay in sync. For social or magic-link sign-in, stage
+/// the externally created session with [adoptSession] and complete the restore
+/// through `authedClient.loginFromCache()`.
 ///
 /// ## Errors
 ///
@@ -65,12 +66,12 @@ class ConvexBetterAuthProvider implements AuthProvider<BetterAuthSession> {
 
   /// Set credentials before calling [login].
   ///
-  /// Cleared by [logout].
+  /// Cleared by [logout] or a successful session adoption.
   String? email;
 
   /// Password paired with [email] for future [login] calls.
   ///
-  /// Cleared by [logout].
+  /// Cleared by [logout] or a successful session adoption.
   String? password;
 
   @override
@@ -191,6 +192,8 @@ class ConvexBetterAuthProvider implements AuthProvider<BetterAuthSession> {
     }
     if (adopted != null) {
       _adoptedSession = null;
+      email = null;
+      password = null;
     }
     _clearPendingLoginSession();
     _cachedSession = refreshed;
@@ -259,7 +262,8 @@ class ConvexBetterAuthProvider implements AuthProvider<BetterAuthSession> {
   /// refreshes keep serving it. After a transient failure the session stays
   /// staged and the next `loginFromCache()` retries it; a [login], [signUp],
   /// [logout] or another [adoptSession] discards it. Persist
-  /// `session.sessionToken` once the restore succeeded.
+  /// `session.sessionToken` once the restore succeeded. Saved email/password
+  /// credentials are cleared only after that successful adoption.
   ///
   /// Like [login], this supersedes a [login], [signUp] or explicit
   /// [loginFromCache] that is still in flight.

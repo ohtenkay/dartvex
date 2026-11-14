@@ -201,6 +201,71 @@ class BetterAuthClient {
         fallbackEmail: email);
   }
 
+  /// Signs in using an ID token obtained from a provider's native SDK.
+  ///
+  /// Configure [provider] (for example, `google`) in Better Auth's
+  /// `socialProviders`. Better Auth verifies [idToken] on the server.
+  /// Stage the returned session with `ConvexBetterAuthProvider.adoptSession`,
+  /// then call `loginFromCache()` on the authenticated Convex client.
+  Future<BetterAuthSession> signInSocial({
+    required String provider,
+    required String idToken,
+  }) async {
+    return _authenticate(
+      '/sign-in/social',
+      {
+        'provider': provider,
+        'idToken': {'token': idToken},
+      },
+      fallbackEmail: '',
+    );
+  }
+
+  /// Reads email verification and password availability for a bearer session.
+  ///
+  /// Linked `credential` accounts count as password accounts even when a
+  /// social provider is also linked. This does not exchange a Convex JWT or
+  /// change the provider's current session.
+  Future<({bool emailVerified, bool hasPassword})> getAccountStatus({
+    required String sessionToken,
+  }) async {
+    Future<http.Response> read(String route) async {
+      final reply = await _send('GET', _endpoint(route), headers: {
+        'Authorization': 'Bearer $sessionToken',
+      });
+      final response = reply.response;
+      final path = '$basePath$route';
+      if (response.statusCode != 200) {
+        throw _statusError(
+            'Better Auth account status request to $path failed', response);
+      }
+      _throwIfErrorBody(path, response.body);
+      return response;
+    }
+
+    final sessionResponse = await read('/get-session');
+    final session = _decodeObjectBody('$basePath/get-session', sessionResponse);
+    final user = _asObject(session['user']);
+    if (user?['emailVerified'] is! bool) {
+      throw const BetterAuthException(
+          'Better Auth returned invalid account status.');
+    }
+    final accountsResponse = await read('/list-accounts');
+    final accounts =
+        _decodeJsonBody('$basePath/list-accounts', accountsResponse);
+    if (accounts is! List ||
+        accounts
+            .any((account) => _asObject(account)?['providerId'] is! String)) {
+      throw const BetterAuthException(
+          'Better Auth returned invalid account status.');
+    }
+    return (
+      emailVerified: user!['emailVerified'] as bool,
+      hasPassword: accounts
+          .any((account) => _asObject(account)!['providerId'] == 'credential'),
+    );
+  }
+
   /// Sends a password reset email.
   ///
   /// Better Auth's reset link redirects to [redirectTo] with a `?token=`
@@ -225,6 +290,35 @@ class BetterAuthClient {
       'token': token,
       'newPassword': newPassword,
     });
+  }
+
+  /// Changes the password of an authenticated user.
+  ///
+  /// Authenticate with [sessionToken] (the Better Auth session token, not the
+  /// Convex JWT). Existing sessions remain valid by default.
+  ///
+  /// When [revokeOtherSessions] is true, Better Auth revokes existing sessions
+  /// and creates a replacement. The returned token must be persisted and used
+  /// to restore authentication, for example with a new provider's
+  /// `initialSessionToken`. Otherwise returns `null` and keeps the current token.
+  Future<String?> changePassword({
+    required String sessionToken,
+    required String currentPassword,
+    required String newPassword,
+    bool revokeOtherSessions = false,
+  }) async {
+    const route = '/change-password';
+    final path = '$basePath$route';
+    final response = await _post(
+        route,
+        {
+          'currentPassword': currentPassword,
+          'newPassword': newPassword,
+          'revokeOtherSessions': revokeOtherSessions,
+        },
+        bearerToken: sessionToken);
+    final body = _decodeObjectBody(path, response);
+    return revokeOtherSessions ? _extractSessionToken(response, body) : null;
   }
 
   /// Sends a magic link email.
