@@ -8,6 +8,7 @@ import 'client.dart';
 import 'exceptions.dart';
 import 'logging.dart';
 import 'transport/http_factory.dart';
+import 'upload_operation.dart';
 
 /// Describes an upload endpoint and its per-request authorization.
 class ConvexUploadRequest {
@@ -97,6 +98,39 @@ class ConvexStorage {
     );
   }
 
+  /// Creates a complete client upload operation without starting it.
+  ///
+  /// [readBytes] prepares the payload once; successful preparation is cached.
+  /// [resolveRequest] can call a generated mutation executor to get credentials,
+  /// which are reused across attempts and manual retries until [retry] returns
+  /// [ConvexUploadRetry.renewCredentials]. [decodeResponse] completes a
+  /// successful HTTP response and can call an application finalization mutation.
+  ///
+  /// [retry] decides which failures may be repeated safely. The default stops
+  /// on every failure. [maxAttempts] bounds attempts per [ConvexUpload.run].
+  /// [timeout] limits byte preparation and each authorized transfer separately.
+  /// The operation exposes state and progress and owns cancellation. Dispose it
+  /// when its UI owner is removed.
+  ConvexUpload<T> createUpload<T>({
+    required FutureOr<Uint8List> Function() readBytes,
+    required String contentType,
+    required FutureOr<ConvexUploadRequest> Function() resolveRequest,
+    required FutureOr<T> Function(http.Response response) decodeResponse,
+    ConvexUploadRetry Function(Object error, int attempt)? retry,
+    int maxAttempts = 2,
+    Duration? timeout,
+  }) =>
+      ConvexUpload<T>.internal(
+        storage: this,
+        readBytes: readBytes,
+        contentType: contentType,
+        resolveRequest: resolveRequest,
+        decodeResponse: decodeResponse,
+        retry: retry,
+        maxAttempts: maxAttempts,
+        timeout: timeout,
+      );
+
   /// Uploads bytes using an application-defined endpoint and response format.
   ///
   /// [resolveRequest] can call a generated mutation executor to obtain upload
@@ -110,6 +144,7 @@ class ConvexStorage {
   /// [ConvexFileUploadCancelledException]. It must complete without an error.
   /// Cancellation requires an abort-capable HTTP client to stop the transfer;
   /// callbacks and backend work already started cannot be undone.
+  /// [onProgress] reports bytes handed to the HTTP client, not server receipt.
   ///
   /// Requests are sent once. Credential renewal and retry policy belong to the
   /// caller, which knows whether repeating an upload is safe.
@@ -120,6 +155,7 @@ class ConvexStorage {
     required FutureOr<T> Function(http.Response response) decodeResponse,
     Duration? timeout,
     Future<void>? abortTrigger,
+    void Function(int bytesSent, int totalBytes)? onProgress,
   }) async {
     if (timeout != null && timeout <= Duration.zero) {
       throw ArgumentError.value(timeout, 'timeout', 'Must be positive');
@@ -145,10 +181,11 @@ class ConvexStorage {
           'Upload endpoint must be an absolute HTTP or HTTPS URL',
         );
       }
-      final request = http.AbortableRequest(
+      final request = _ProgressUploadRequest(
         target.method,
         target.url,
         abortTrigger: abort.future,
+        onProgress: onProgress,
       )
         ..headers.addAll(target.headers)
         ..headers['Content-Type'] = contentType
@@ -162,6 +199,7 @@ class ConvexStorage {
           'sizeBytes': bytes.length,
         },
       );
+      onProgress?.call(0, bytes.length);
       final client = _httpClient ?? createDefaultHttpClient();
       try {
         final response =
@@ -294,5 +332,40 @@ class ConvexStorage {
       );
     }
     return storageId;
+  }
+}
+
+class _ProgressUploadRequest extends http.Request implements http.Abortable {
+  _ProgressUploadRequest(
+    super.method,
+    super.url, {
+    this.abortTrigger,
+    this.onProgress,
+  });
+
+  @override
+  final Future<void>? abortTrigger;
+
+  final void Function(int bytesSent, int totalBytes)? onProgress;
+
+  @override
+  http.ByteStream finalize() {
+    var sent = 0;
+    final total = contentLength;
+    return http.ByteStream(super.finalize().expand(_chunks).map((chunk) {
+      sent += chunk.length;
+      onProgress?.call(sent, total);
+      return chunk;
+    }));
+  }
+
+  Iterable<List<int>> _chunks(List<int> bytes) sync* {
+    const chunkSize = 64 * 1024;
+    for (var offset = 0; offset < bytes.length; offset += chunkSize) {
+      final end = (offset + chunkSize).clamp(0, bytes.length);
+      yield bytes is Uint8List
+          ? Uint8List.sublistView(bytes, offset, end)
+          : bytes.sublist(offset, end);
+    }
   }
 }

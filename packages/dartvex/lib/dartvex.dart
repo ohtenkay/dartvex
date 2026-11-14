@@ -30,6 +30,12 @@ export 'src/mutation.dart' show ConvexMutationReference, NoArgs;
 export 'src/query.dart'
     show ConvexQueryReference, ConvexPaginatedQueryReference;
 export 'src/storage.dart' show ConvexStorage, ConvexUploadRequest;
+export 'src/upload_operation.dart'
+    show
+        ConvexUpload,
+        ConvexUploadSnapshot,
+        ConvexUploadStatus,
+        ConvexUploadRetry;
 export 'src/sync/optimistic_updates.dart'
     show
         OptimisticLocalStore,
