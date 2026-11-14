@@ -1,4 +1,9 @@
-import 'package:dartvex/dartvex.dart' show OptimisticUpdate;
+import 'package:dartvex/dartvex.dart'
+    show
+        ConvexMutationReference,
+        OptimisticUpdate,
+        TypedOptimisticUpdate,
+        bindTypedOptimisticUpdate;
 import 'package:flutter/widgets.dart';
 
 import 'request_state.dart';
@@ -7,101 +12,90 @@ import 'safe_rebuild.dart';
 import 'snapshot.dart';
 
 /// Builder callback for [ConvexMutation].
-typedef ConvexMutationBuilder<T> =
+typedef ConvexMutationBuilder<Args, Result> =
     Widget Function(
       BuildContext context,
-      ConvexRequestExecutor<T> mutate,
-      ConvexRequestSnapshot<T> snapshot,
+      Future<Result> Function(Args args) mutate,
+      ConvexRequestSnapshot<Result> snapshot,
     );
 
-/// Widget that exposes an imperative Convex mutation and request snapshot.
+/// Widget exposing a typed mutation executor and request snapshot.
 ///
-/// The `mutate` executor is **single-flight**: while a call is in flight
-/// (`snapshot.isLoading`), another call is not sent and its future rejects
-/// with a [StateError] — unnoticed if the future is ignored. A mutation stays
-/// in flight until the server confirms it, which includes the whole time the
-/// client is offline and holds the mutation for the next reconnect. Disable
-/// the trigger while `snapshot.isLoading`, or call
-/// `ConvexProvider.of(context).mutate(...)` directly when several mutations
-/// must be queued concurrently (for example a chat composer that can send
-/// while offline):
+/// The executor is single-flight: overlapping calls reject with [StateError].
+/// A request stays in flight until the server confirms it, including while
+/// offline. Disable its trigger while `snapshot.isLoading`.
 ///
-/// ```dart
-/// ConvexMutation<String>(
-///   mutation: 'messages:send',
-///   builder: (context, mutate, snapshot) => FilledButton(
-///     onPressed: snapshot.isLoading ? null : () => mutate({'text': 'Hi'}),
-///     child: const Text('Send'),
-///   ),
-/// )
-/// ```
-///
-/// The executor may be called after the widget is unmounted (for example
-/// from an async callback that awaited an upload first): the mutation is still
-/// sent, only the snapshot is no longer updated. When [decode] throws, the
-/// error is a [ConvexDecodeException] — the mutation itself succeeded.
-class ConvexMutation<T> extends StatefulWidget {
-  /// Creates a [ConvexMutation].
+/// Captured executors remain usable after unmount: the request is sent, while
+/// snapshot updates stop. Decoder failures report [ConvexDecodeException];
+/// the server write already succeeded and must not be retried as a rejection.
+class ConvexMutation<Args, Result> extends StatefulWidget {
+  /// Creates a typed mutation widget.
   const ConvexMutation({
     super.key,
     required this.mutation,
     required this.builder,
-    this.decode,
     this.client,
     this.optimisticUpdate,
-  });
+    this.typedOptimisticUpdate,
+  }) : assert(optimisticUpdate == null || typedOptimisticUpdate == null);
 
-  /// Convex mutation name to invoke.
-  final String mutation;
-
-  /// Optional decoder for the raw mutation result.
-  final ConvexDecoder<T>? decode;
+  /// Mutation name and codecs, normally generated from the backend.
+  final ConvexMutationReference<Args, Result> mutation;
 
   /// Optional runtime client override.
   final ConvexRuntimeClient? client;
 
-  /// Optional optimistic update applied while the mutation is in flight.
-  ///
-  /// Overlays query results locally the moment the mutation is sent and rolls
-  /// back automatically when it completes or fails. See `ConvexClient.mutate`.
+  /// Raw optimistic update, mutually exclusive with [typedOptimisticUpdate].
   final OptimisticUpdate? optimisticUpdate;
 
-  /// Builder that receives the mutate callback and current request snapshot.
-  final ConvexMutationBuilder<T> builder;
+  /// Typed update bound to the arguments and stable context of this invocation.
+  final TypedOptimisticUpdate<Args>? typedOptimisticUpdate;
+
+  /// Builds the UI with the executor and current request state.
+  final ConvexMutationBuilder<Args, Result> builder;
 
   @override
-  State<ConvexMutation<T>> createState() => _ConvexMutationState<T>();
+  State<ConvexMutation<Args, Result>> createState() =>
+      _ConvexMutationState<Args, Result>();
 }
 
-class _ConvexMutationState<T> extends State<ConvexMutation<T>>
+class _ConvexMutationState<Args, Result>
+    extends State<ConvexMutation<Args, Result>>
     with
-        ConvexSafeRebuild<ConvexMutation<T>>,
-        ConvexRequestState<ConvexMutation<T>, T> {
+        ConvexSafeRebuild<ConvexMutation<Args, Result>>,
+        ConvexRequestState<ConvexMutation<Args, Result>, Args, Result> {
   @override
   ConvexRuntimeClient? get clientOverride => widget.client;
 
   @override
-  String get requestLabel => 'Mutation "${widget.mutation}"';
+  String get requestLabel => 'Mutation "${widget.mutation.name}"';
 
   @override
-  ConvexDecoder<T>? get decoder => widget.decode;
+  ConvexDecoder<Result> get decoder => widget.mutation.decode;
 
   @override
-  ConvexRequestCall captureRequest() {
-    final mutationName = widget.mutation;
+  ConvexRequestCall<Args> captureRequest() {
+    final mutation = widget.mutation;
     final optimisticUpdate = widget.optimisticUpdate;
-    return (client, args) =>
-        client.mutate(mutationName, args, optimisticUpdate);
+    final typedUpdate = widget.typedOptimisticUpdate;
+    return (client, args) => client.mutate(
+      mutation.name,
+      mutation.encode(args),
+      typedUpdate == null
+          ? optimisticUpdate
+          : bindTypedOptimisticUpdate(typedUpdate, args),
+    );
   }
 
   @override
-  void didUpdateWidget(covariant ConvexMutation<T> oldWidget) {
+  void didUpdateWidget(covariant ConvexMutation<Args, Result> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    updateRequestIdentity(nameChanged: oldWidget.mutation != widget.mutation);
+    updateRequestIdentity(
+      nameChanged: oldWidget.mutation.name != widget.mutation.name,
+    );
   }
 
   @override
-  Widget build(BuildContext context) {
-    return widget.builder(context, runRequest, requestSnapshot);
-  }
+  Widget build(BuildContext context) =>
+      widget.builder(context, runRequest, requestSnapshot);
 }

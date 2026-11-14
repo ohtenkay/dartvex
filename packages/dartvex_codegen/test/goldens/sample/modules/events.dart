@@ -23,6 +23,9 @@ class EventsApi {
     return expectCommitTs(raw$, label: 'DispatchResult');
   }
 
+  ConvexMutationReference<Map<String, dynamic>, Object> get dispatchMutation =>
+      dispatchMutationReference;
+
   Future<FieldResult> field() async {
     final raw$ = await _client.query('events:field', const <String, dynamic>{});
     return _decodeFieldResult(raw$);
@@ -44,6 +47,9 @@ class EventsApi {
       ),
     );
   }
+
+  ConvexQueryReference<NoArgs, FieldResult> get fieldQuery =>
+      fieldQueryReference;
 
   Future<LabelsResult> labels() async {
     final raw$ = await _client.query(
@@ -69,6 +75,9 @@ class EventsApi {
       ),
     );
   }
+
+  ConvexQueryReference<NoArgs, LabelsResult> get labelsQuery =>
+      labelsQueryReference;
 
   Future<LatestResult> latest({
     required Map<String, double> scores,
@@ -101,6 +110,9 @@ class EventsApi {
     );
   }
 
+  ConvexQueryReference<LatestArgs, LatestResult> get latestQuery =>
+      latestQueryReference;
+
   Future<Null> resize({
     required ResizeArgsWidth width,
     Optional<Object> at = const Optional.absent(),
@@ -113,6 +125,9 @@ class EventsApi {
     );
     return null;
   }
+
+  ConvexMutationReference<ResizeArgs, void> get resizeMutation =>
+      resizeMutationReference;
 }
 
 enum ChoiceValue {
@@ -474,3 +489,44 @@ ResizeArgs _decodeResizeArgs(dynamic raw) {
         : const Optional.absent(),
   );
 }
+
+final ConvexMutationReference<Map<String, dynamic>, Object>
+dispatchMutationReference = ConvexMutationReference(
+  name: 'events:dispatch',
+  encode: (args) => args,
+  decode: (raw) => expectCommitTs(raw, label: 'DispatchResult'),
+);
+
+final ConvexQueryReference<NoArgs, FieldResult> fieldQueryReference =
+    ConvexQueryReference(
+      name: 'events:field',
+      encode: (args) => const <String, dynamic>{},
+      decodeArgs: (raw) => const NoArgs(),
+      decode: (raw) => _decodeFieldResult(raw),
+      encodeResult: (value) => _encodeFieldResult(value),
+    );
+
+final ConvexQueryReference<NoArgs, LabelsResult> labelsQueryReference =
+    ConvexQueryReference(
+      name: 'events:labels',
+      encode: (args) => const <String, dynamic>{},
+      decodeArgs: (raw) => const NoArgs(),
+      decode: (raw) => _decodeLabelsResult(raw),
+      encodeResult: (value) => _encodeLabelsResult(value),
+    );
+
+final ConvexQueryReference<LatestArgs, LatestResult> latestQueryReference =
+    ConvexQueryReference(
+      name: 'events:latest',
+      encode: (args) => _encodeLatestArgs(args),
+      decodeArgs: (raw) => _decodeLatestArgs(raw),
+      decode: (raw) => _decodeLatestResult(raw),
+      encodeResult: (value) => _encodeLatestResult(value),
+    );
+
+final ConvexMutationReference<ResizeArgs, void> resizeMutationReference =
+    ConvexMutationReference(
+      name: 'events:resize',
+      encode: (args) => _encodeResizeArgs(args),
+      decode: (raw) => null,
+    );

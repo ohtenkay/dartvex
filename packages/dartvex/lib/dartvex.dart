@@ -27,6 +27,8 @@ export 'src/config.dart'
 export 'src/exceptions.dart'
     show ConvexException, ConvexFileUploadException, ConvexStorageException;
 export 'src/logging.dart' show DartvexLogEvent, DartvexLogger, DartvexLogLevel;
+export 'src/mutation.dart' show ConvexMutationReference, NoArgs;
+export 'src/query.dart' show ConvexQueryReference;
 export 'src/storage.dart' show ConvexStorage;
 export 'src/sync/optimistic_updates.dart'
     show OptimisticLocalStore, OptimisticQueryEntry, OptimisticUpdate;
@@ -53,6 +55,13 @@ export 'src/transport/ws_interface.dart'
     show WebSocketAdapter, WebSocketCloseEvent;
 export 'src/transport/ws_manager.dart'
     show TransitionMetrics, TransitionMetricsCallback;
+export 'src/typed_optimistic_update.dart'
+    show
+        TypedOptimisticLocalStore,
+        TypedOptimisticQueryEntry,
+        OptimisticMutationContext,
+        TypedOptimisticUpdate,
+        bindTypedOptimisticUpdate;
 export 'src/values/json_codec.dart'
     show
         ConvexCommitTsPlaceholder,

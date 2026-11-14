@@ -55,6 +55,7 @@ class DartGenerator {
     this.clientImport = 'package:dartvex/dartvex.dart',
     this.schema,
     this.discriminator = 'kind',
+    this.generateFlutterWidgets = false,
   }) : _naming = naming ?? const Naming();
 
   final Naming _naming;
@@ -67,6 +68,9 @@ class DartGenerator {
 
   /// Required string-literal field used by discriminated object unions.
   final String discriminator;
+
+  /// Whether to emit typed Flutter query and mutation widgets.
+  final bool generateFlutterWidgets;
 
   SchemaTypeRegistry? _schemaTypes;
   UnionMetadataRegistry? _unionMetadata;
@@ -116,7 +120,20 @@ class DartGenerator {
         _renderNode(node, isRoot: isRoot, typeContext: typeContext),
         filePath,
       );
-      warnings.addAll(typeContext.warnings);
+      if (generateFlutterWidgets &&
+          node.functions.any(
+            (function) =>
+                function.functionType == 'Mutation' ||
+                function.functionType == 'Query' &&
+                    _detectPagination(function) == null,
+          )) {
+        final widgetPath = _widgetFilePath(node);
+        files[widgetPath] = _formatOrThrow(
+          _renderFlutterWidgets(node, typeContext),
+          widgetPath,
+        );
+      }
+      warnings.addAll(typeContext.warnings.toSet());
     }
 
     files['schema.dart'] = _formatOrThrow(
@@ -227,6 +244,19 @@ class DartGenerator {
       for (final function in node.functions) {
         final methodName = _naming.methodName(function.functionName);
         addMember(methodName, 'function "${function.identifier}"');
+        if (function.functionType == 'Mutation') {
+          addMember(
+            '${methodName}Mutation',
+            'typed mutation reference for "${function.identifier}"',
+          );
+        }
+        if (function.functionType == 'Query' &&
+            _detectPagination(function) == null) {
+          addMember(
+            '${methodName}Query',
+            'typed query reference for "${function.identifier}"',
+          );
+        }
         // Paginated queries emit a single wrapper method, no Subscribe
         // helper; reserving one would reject names that never collide.
         if (function.functionType == 'Query' &&
@@ -381,10 +411,11 @@ class DartGenerator {
       );
     }
 
-    final methods = <String>[
+    final rendered = [
       for (final function in node.functions)
         _renderFunction(function, context: typeContext),
     ];
+    final methods = [for (final function in rendered) function.methods];
 
     if (typeContext.usesTypedData) {
       imports.add('dart:typed_data');
@@ -409,6 +440,18 @@ class DartGenerator {
         ..writeln("export 'schema.dart';");
       if (_externalTypeNames.isNotEmpty) {
         buffer.writeln("export 'types.dart';");
+      }
+      if (generateFlutterWidgets) {
+        for (final widgetNode in _flattenNodes(node)) {
+          if (widgetNode.functions.any(
+            (function) =>
+                function.functionType == 'Mutation' ||
+                function.functionType == 'Query' &&
+                    _detectPagination(function) == null,
+          )) {
+            buffer.writeln("export '${_widgetFilePath(widgetNode)}';");
+          }
+        }
       }
       buffer.writeln();
     }
@@ -442,10 +485,17 @@ class DartGenerator {
         ..writeln()
         ..writeln(definitions);
     }
+    for (final function in rendered) {
+      if (function.helpers.isNotEmpty) {
+        buffer
+          ..writeln()
+          ..writeln(function.helpers);
+      }
+    }
     return '${buffer.toString().trimRight()}\n';
   }
 
-  String _renderFunction(
+  _RenderedFunction _renderFunction(
     FunctionSpec function, {
     required TypeRenderContext context,
   }) {
@@ -454,7 +504,10 @@ class DartGenerator {
       onSkip: context.warnings.add,
     );
     if (pagination != null) {
-      return _renderPaginatedQuery(function, pagination, context: context);
+      return _RenderedFunction(
+        methods: _renderPaginatedQuery(function, pagination, context: context),
+        helpers: '',
+      );
     }
 
     final mapper = TypeMapper(naming: _naming);
@@ -481,6 +534,9 @@ class DartGenerator {
 
     final methodBuffer = StringBuffer();
     var requestArgsExpression = 'const <String, dynamic>{}';
+    var referenceArgsType = 'NoArgs';
+    var referenceEncodeExpression = 'const <String, dynamic>{}';
+    var referenceDecodeArgsExpression = 'const NoArgs()';
     final namedParameters = <String>[];
     final positionalParameters = <String>[];
     final argNames = <String>{};
@@ -520,6 +576,9 @@ class DartGenerator {
       requestArgsExpression = argsObject.encode(
         '(${recordAssignments.join(', ')})',
       );
+      referenceArgsType = argsObject.annotation;
+      referenceEncodeExpression = argsObject.encode('args');
+      referenceDecodeArgsExpression = argsObject.decode('raw');
     } else if (argsType is ConvexObjectType && argsType.value.isEmpty) {
       // No arguments.
     } else {
@@ -538,6 +597,9 @@ class DartGenerator {
       );
       requestArgsExpression = 'args';
       argNames.add('args');
+      referenceArgsType = 'Map<String, dynamic>';
+      referenceEncodeExpression = 'args';
+      referenceDecodeArgsExpression = 'raw';
     }
 
     var optimisticArgument = '';
@@ -624,7 +686,61 @@ class DartGenerator {
         ..writeln('}');
     }
 
-    return methodBuffer.toString();
+    final helperBuffer = StringBuffer();
+    if (function.functionType == 'Query') {
+      final referenceName = '${methodName}QueryReference';
+      methodBuffer
+        ..writeln()
+        ..writeln(
+          'ConvexQueryReference<$referenceArgsType, '
+          '${resultType.annotation}> get ${methodName}Query =>',
+        )
+        ..writeln('    $referenceName;');
+      helperBuffer
+        ..writeln(
+          'final ConvexQueryReference<$referenceArgsType, '
+          '${resultType.annotation}> $referenceName = ConvexQueryReference(',
+        )
+        ..writeln(
+          '      name: ${dartSingleQuotedString(function.convexFunctionName)},',
+        )
+        ..writeln('      encode: (args) => $referenceEncodeExpression,')
+        ..writeln('      decodeArgs: (raw) => $referenceDecodeArgsExpression,')
+        ..writeln('      decode: (raw) => ${resultType.decode('raw')},')
+        ..writeln(
+          '      encodeResult: (value) => ${resultType.encode('value')},',
+        )
+        ..writeln('    );');
+    }
+
+    if (function.functionType == 'Mutation') {
+      final mutationResultType =
+          resultType.annotation == 'Null' ? 'void' : resultType.annotation;
+      final referenceName = '${methodName}MutationReference';
+      methodBuffer
+        ..writeln()
+        ..writeln(
+          'ConvexMutationReference<$referenceArgsType, '
+          '$mutationResultType> get ${methodName}Mutation =>',
+        )
+        ..writeln('    $referenceName;');
+      helperBuffer
+        ..writeln(
+          'final ConvexMutationReference<$referenceArgsType, '
+          '$mutationResultType> $referenceName = ConvexMutationReference(',
+        )
+        ..writeln(
+          '      name: ${dartSingleQuotedString(function.convexFunctionName)},',
+        )
+        ..writeln('      encode: (args) => $referenceEncodeExpression,')
+        ..writeln('      decode: (raw) => ${resultType.decode('raw')},')
+        ..writeln('    );');
+    }
+
+    return _RenderedFunction(
+      methods: methodBuffer.toString(),
+      helpers: helperBuffer.toString(),
+    );
   }
 
   /// Detects whether [function] is a Convex paginated query and, if so, returns
@@ -1156,6 +1272,292 @@ String describeType(dynamic value) {
   String _moduleFilePath(_ModuleNode node) =>
       'modules/${node.pathSegments.join('/')}.dart';
 
+  String _widgetFilePath(_ModuleNode node) =>
+      node.pathSegments.isEmpty
+          ? 'widgets/root.dart'
+          : 'widgets/${node.pathSegments.join('/')}.dart';
+
+  String _renderFlutterWidgets(_ModuleNode node, TypeRenderContext context) {
+    final filePath = _widgetFilePath(node);
+    final modulePath =
+        node.pathSegments.isEmpty ? 'api.dart' : _moduleFilePath(node);
+    final imports =
+        ImportManager()
+          ..add('dart:async')
+          ..add('package:flutter/widgets.dart')
+          ..add('package:dartvex_flutter/dartvex_flutter.dart')
+          ..add(
+            _naming.relativeImport(fromFile: filePath, targetFile: 'api.dart'),
+          );
+    if (modulePath != 'api.dart') {
+      imports.add(
+        _naming.relativeImport(fromFile: filePath, targetFile: modulePath),
+      );
+    }
+    final mapper = TypeMapper(naming: _naming);
+    final declarations = <String>[];
+    for (final function in node.functions.where(
+      (function) => function.functionType == 'Mutation',
+    )) {
+      final prefix = _naming.typeName(function.functionName);
+      final modulePrefix = _naming.moduleClassName(node.pathSegments);
+      final baseName =
+          '${modulePrefix.substring(0, modulePrefix.length - 3)}$prefix';
+      final widgetName = '${baseName}Mutation';
+      final executorName = '${baseName}MutationExecutor';
+      final methodName = _naming.methodName(function.functionName);
+      final mappedResult = mapper.mapType(
+        function.returns,
+        suggestedName: '${prefix}Result',
+        context: context,
+      );
+      final resultType =
+          mappedResult.annotation == 'Null' ? 'void' : mappedResult.annotation;
+      final args = function.args;
+      final fieldNames =
+          args is ConvexObjectType
+              ? mapper.resolveObjectFieldNames(
+                args.value.keys,
+                ownerName: '${prefix}Args',
+              )
+              : const <String, String>{};
+      var argsType = 'NoArgs';
+      var callSignature = '';
+      var argsExpression = 'const NoArgs()';
+      if (args is ConvexObjectType && args.value.isNotEmpty) {
+        argsType =
+            mapper
+                .mapType(args, suggestedName: '${prefix}Args', context: context)
+                .annotation;
+        final fields = <String>[];
+        final assignments = <String>[];
+        for (final entry in args.value.entries) {
+          final fieldName = fieldNames[entry.key]!;
+          final mappedField = mapper.mapType(
+            entry.value.fieldType,
+            suggestedName:
+                '${prefix}Args${mapper.fieldTypeSuffix(entry.key, fieldName)}',
+            context: context,
+            fieldName: entry.key,
+          );
+          fields.add(
+            entry.value.optional
+                ? 'Optional<${mappedField.annotation}> $fieldName = const Optional.absent()'
+                : 'required ${mappedField.annotation} $fieldName',
+          );
+          assignments.add('$fieldName: $fieldName');
+        }
+        callSignature = '{${fields.join(', ')}}';
+        argsExpression = '(${assignments.join(', ')})';
+      } else if (args is! ConvexObjectType) {
+        argsType = 'Map<String, dynamic>';
+        callSignature =
+            '[Map<String, dynamic> args = const <String, dynamic>{}]';
+        argsExpression = 'args';
+      }
+      final runFields = <String>[];
+      final argumentNames = <String>{};
+      if (args is ConvexObjectType && args.value.isNotEmpty) {
+        runFields.add(callSignature.substring(1, callSignature.length - 1));
+        argumentNames.addAll(fieldNames.values);
+      } else if (args is! ConvexObjectType) {
+        runFields.add('Map<String, dynamic> args = const <String, dynamic>{}');
+        argumentNames.add('args');
+      }
+      var successName = 'onSuccess';
+      while (argumentNames.contains(successName)) {
+        successName = '${successName}Callback';
+      }
+      runFields.add('void Function($resultType result)? $successName');
+      final runSignature = '{${runFields.join(', ')}}';
+      declarations.add('''
+/// Callable typed mutation for ${function.convexFunctionName}.
+class $executorName {
+  /// Creates an executor backed by the mutation widget.
+  const $executorName(this._mutate);
+
+  final Future<$resultType> Function($argsType) _mutate;
+
+  /// Runs the mutation.
+  Future<$resultType> call($callSignature) => _mutate($argsExpression);
+
+  /// Starts the mutation, observing failures through the widget snapshot.
+  ///
+  /// [$successName] runs only on success. Errors from that callback are not
+  /// suppressed. Use [call] when you need to await the result or handle errors.
+  void run($runSignature) {
+    unawaited(_mutate($argsExpression).then<void>(
+      (result) { $successName?.call(result); },
+      onError: (Object error, StackTrace stackTrace) {},
+    ));
+  }
+}
+
+/// Flutter widget for ${function.convexFunctionName}.
+class $widgetName extends StatelessWidget {
+  /// Creates a typed mutation widget.
+  const $widgetName({super.key, required this.builder, this.client, this.optimisticUpdate});
+
+  /// Builds the UI with the callable mutation and current request state.
+  final Widget Function(BuildContext, $executorName, ConvexRequestSnapshot<$resultType>) builder;
+
+  /// Optional runtime client override.
+  final ConvexRuntimeClient? client;
+
+  /// Optional optimistic update for the mutation.
+  final TypedOptimisticUpdate<$argsType>? optimisticUpdate;
+
+  @override
+  Widget build(BuildContext context) => ConvexMutation<$argsType, $resultType>(
+    mutation: ${methodName}MutationReference,
+    client: client,
+    typedOptimisticUpdate: optimisticUpdate,
+    builder: (context, mutate, snapshot) => builder(
+      context,
+      $executorName(mutate),
+      snapshot,
+    ),
+  );
+}
+''');
+    }
+    for (final function in node.functions.where(
+      (function) =>
+          function.functionType == 'Query' &&
+          _detectPagination(function) == null,
+    )) {
+      final prefix = _naming.typeName(function.functionName);
+      final modulePrefix = _naming.moduleClassName(node.pathSegments);
+      final baseName =
+          '${modulePrefix.substring(0, modulePrefix.length - 3)}$prefix';
+      final widgetName = '${baseName}Query';
+      final methodName = _naming.methodName(function.functionName);
+      final resultType =
+          mapper
+              .mapType(
+                function.returns,
+                suggestedName: '${prefix}Result',
+                context: context,
+              )
+              .annotation;
+      final args = function.args;
+      final fieldNames =
+          args is ConvexObjectType
+              ? mapper.resolveObjectFieldNames(
+                args.value.keys,
+                ownerName: '${prefix}Args',
+              )
+              : const <String, String>{};
+      var argsType = 'NoArgs';
+      var argsExpression = 'const NoArgs()';
+      final constructorArgs = <String>[];
+      final fields = <String>[];
+      if (args is ConvexObjectType && args.value.isNotEmpty) {
+        argsType =
+            mapper
+                .mapType(args, suggestedName: '${prefix}Args', context: context)
+                .annotation;
+        final assignments = <String>[];
+        final usedWidgetNames = <String>{
+          'key',
+          'builder',
+          'snapshotBuilder',
+          'waitingBuilder',
+          'errorBuilder',
+          'client',
+        };
+        for (final entry in args.value.entries) {
+          final fieldName = fieldNames[entry.key]!;
+          var widgetFieldName = fieldName;
+          while (usedWidgetNames.contains(widgetFieldName)) {
+            widgetFieldName = 'query${_naming.typeName(widgetFieldName)}';
+          }
+          usedWidgetNames.add(widgetFieldName);
+          final mappedField = mapper.mapType(
+            entry.value.fieldType,
+            suggestedName:
+                '${prefix}Args${mapper.fieldTypeSuffix(entry.key, fieldName)}',
+            context: context,
+            fieldName: entry.key,
+          );
+          final fieldType =
+              entry.value.optional
+                  ? 'Optional<${mappedField.annotation}>'
+                  : mappedField.annotation;
+          fields.add('final $fieldType $widgetFieldName;');
+          constructorArgs.add(
+            entry.value.optional
+                ? 'this.$widgetFieldName = const Optional.absent()'
+                : 'required this.$widgetFieldName',
+          );
+          assignments.add('$fieldName: $widgetFieldName');
+        }
+        argsExpression = '(${assignments.join(', ')})';
+      } else if (args is! ConvexObjectType) {
+        argsType = 'Map<String, dynamic>';
+        fields.add('final Map<String, dynamic> args;');
+        constructorArgs.add('this.args = const <String, dynamic>{}');
+        argsExpression = 'args';
+      }
+      declarations.add('''
+/// Flutter widget for ${function.convexFunctionName}.
+class $widgetName extends StatelessWidget {
+  /// Creates a typed query widget with default loading and error UI.
+  const $widgetName({super.key, required this.builder, this.client, this.waitingBuilder, this.errorBuilder, ${constructorArgs.join(', ')}})
+      : snapshotBuilder = null;
+
+  /// Creates a query widget whose builder handles every snapshot state.
+  const $widgetName.snapshot({super.key, required this.snapshotBuilder, this.client, ${constructorArgs.join(', ')}})
+      : builder = null,
+        waitingBuilder = null,
+        errorBuilder = null;
+
+  /// Builds the UI when query data is available.
+  final Widget Function(BuildContext, $resultType)? builder;
+
+  /// Builds the UI from every query snapshot in snapshot mode.
+  final Widget Function(BuildContext, ConvexQuerySnapshot<$resultType>)? snapshotBuilder;
+
+  /// Overrides the initial loading UI.
+  final WidgetBuilder? waitingBuilder;
+
+  /// Overrides the error UI.
+  final Widget Function(BuildContext, Object)? errorBuilder;
+
+  /// Optional runtime client override.
+  final ConvexRuntimeClient? client;
+
+  ${fields.join('\n  ')}
+
+  @override
+  Widget build(BuildContext context) {
+    final buildSnapshot = snapshotBuilder;
+    if (buildSnapshot != null) {
+      return ConvexTypedQuery<$argsType, $resultType>.snapshot(
+        query: ${methodName}QueryReference,
+        args: $argsExpression,
+        client: client,
+        snapshotBuilder: buildSnapshot,
+      );
+    }
+    return ConvexTypedQuery<$argsType, $resultType>(
+      query: ${methodName}QueryReference,
+      args: $argsExpression,
+      client: client,
+      builder: builder!,
+      waitingBuilder: waitingBuilder,
+      errorBuilder: errorBuilder,
+    );
+  }
+}
+''');
+    }
+    if (context.usesTypedData) imports.add('dart:typed_data');
+    return '$generatedFileHeader\n$generatedFileIgnores\n'
+        '// ignore_for_file: unnecessary_import\n\n'
+        '${imports.render()}\n\n${declarations.join('\n')}';
+  }
+
   void _validateModulePathSegment(String segment, String identifier) {
     if (segment.isEmpty ||
         segment == '.' ||
@@ -1193,4 +1595,10 @@ class _PaginationInfo {
 
   final ConvexType? elementType;
   final Map<String, ConvexField> otherArgs;
+}
+
+class _RenderedFunction {
+  const _RenderedFunction({required this.methods, required this.helpers});
+  final String methods;
+  final String helpers;
 }

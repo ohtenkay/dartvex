@@ -9,6 +9,14 @@ export 'package:dartvex/dartvex.dart'
         ConnectionStatus,
         ConvexPaginatedResult,
         ConvexPaginationStatus,
+        ConvexMutationReference,
+        ConvexQueryReference,
+        NoArgs,
+        TypedOptimisticLocalStore,
+        TypedOptimisticQueryEntry,
+        TypedOptimisticUpdate,
+        OptimisticMutationContext,
+        bindTypedOptimisticUpdate,
         ConvexStorageException,
         OptimisticLocalStore,
         OptimisticQueryEntry,
@@ -92,3 +100,5 @@ export 'src/testing/fake_convex_client.dart'
         FakeConvexClient,
         FakeConvexPaginatedQuery,
         FakeConvexSubscription;
+
+export 'src/typed_query_builder.dart' show ConvexTypedQuery;

@@ -10,6 +10,7 @@ class GenerateConfig {
     required this.verbose,
     required this.watch,
     this.discriminator = 'kind',
+    this.flutterWidgets = false,
     this.projectDirectory,
     this.specFile,
   });
@@ -38,6 +39,9 @@ class GenerateConfig {
   /// Object-union field used to select generated sealed subclasses.
   final String discriminator;
 
+  /// Whether to emit typed Flutter query and mutation widgets.
+  final bool flutterWidgets;
+
   /// Returns a copy with filesystem paths normalized to absolute paths.
   GenerateConfig normalize() {
     return GenerateConfig(
@@ -53,6 +57,7 @@ class GenerateConfig {
       verbose: verbose,
       watch: watch,
       discriminator: discriminator,
+      flutterWidgets: flutterWidgets,
     );
   }
 

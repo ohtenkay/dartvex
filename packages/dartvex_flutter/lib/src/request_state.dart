@@ -8,11 +8,8 @@ import 'safe_rebuild.dart';
 import 'snapshot.dart';
 
 /// Signature of a captured one-shot Convex call.
-typedef ConvexRequestCall =
-    Future<dynamic> Function(
-      ConvexRuntimeClient client,
-      Map<String, dynamic> args,
-    );
+typedef ConvexRequestCall<Args> =
+    Future<dynamic> Function(ConvexRuntimeClient client, Args args);
 
 /// Shared request state machine of `ConvexMutation` and `ConvexAction`.
 ///
@@ -24,7 +21,8 @@ typedef ConvexRequestCall =
 ///   snapshot and orphans any in-flight completion.
 /// * The executor stays usable after the widget is unmounted: the request is
 ///   still sent through the captured client, only snapshot updates stop.
-mixin ConvexRequestState<W extends StatefulWidget, T> on ConvexSafeRebuild<W> {
+mixin ConvexRequestState<W extends StatefulWidget, Args, T>
+    on ConvexSafeRebuild<W> {
   ConvexRuntimeClient? _runtimeClient;
   ConvexRequestSnapshot<T> _requestSnapshot =
       ConvexRequestSnapshot<T>.initial();
@@ -48,7 +46,7 @@ mixin ConvexRequestState<W extends StatefulWidget, T> on ConvexSafeRebuild<W> {
 
   /// Captures the widget's current request configuration.
   @protected
-  ConvexRequestCall captureRequest();
+  ConvexRequestCall<Args> captureRequest();
 
   ConvexRuntimeClient _resolveClient() =>
       clientOverride ?? ConvexProvider.of(context);
@@ -88,9 +86,7 @@ mixin ConvexRequestState<W extends StatefulWidget, T> on ConvexSafeRebuild<W> {
   }
 
   /// Runs the request with [args]; the executor handed to builders.
-  Future<T> runRequest([
-    Map<String, dynamic> args = const <String, dynamic>{},
-  ]) {
+  Future<T> runRequest(Args args) {
     final active = _inFlight;
     if (active != null) {
       // ignore() keeps an ignored return value (the normal builder pattern,

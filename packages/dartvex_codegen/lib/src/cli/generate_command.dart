@@ -119,6 +119,7 @@ class GenerateCommand {
       ..addOption('output', help: 'Directory for the generated bindings.')
       ..addOption('client-import', defaultsTo: 'package:dartvex/dartvex.dart')
       ..addOption('discriminator', defaultsTo: 'kind')
+      ..addFlag('flutter-widgets', negatable: false)
       ..addFlag(
         'watch',
         negatable: false,
@@ -193,6 +194,7 @@ class GenerateCommand {
       verbose: parsed['verbose'] as bool,
       watch: parsed['watch'] as bool,
       discriminator: parsed['discriminator'] as String,
+      flutterWidgets: parsed['flutter-widgets'] as bool,
     );
     config.validate();
     final normalizedConfig = config.normalize();
@@ -278,6 +280,7 @@ class GenerateCommand {
       clientImport: config.clientImport,
       schema: schema,
       discriminator: config.discriminator,
+      generateFlutterWidgets: config.flutterWidgets,
     ).generate(spec);
 
     if (config.dryRun) {

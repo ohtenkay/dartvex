@@ -266,14 +266,18 @@ void main() {
   group('ConvexMutation executor after unmount (F88)', () {
     testWidgets('still sends the mutation and completes', (tester) async {
       final client = _client()..onMutate = (name, args) async => 'id-1';
-      late ConvexRequestExecutor<String> mutate;
+      late Future<String> Function(Map<String, dynamic>) mutate;
 
       await tester.pumpWidget(
         _app(
           ConvexProvider(
             client: client,
-            child: ConvexMutation<String>(
-              mutation: 'files:attach',
+            child: ConvexMutation<Map<String, dynamic>, String>(
+              mutation: ConvexMutationReference<Map<String, dynamic>, String>(
+                name: 'files:attach',
+                encode: (args) => args,
+                decode: (raw) => raw as String,
+              ),
               builder: (context, executor, snapshot) {
                 mutate = executor;
                 return const SizedBox();
@@ -300,14 +304,18 @@ void main() {
           calls += 1;
           return calls == 1 ? first.future : Future<Object?>.value('id-2');
         };
-      late ConvexRequestExecutor<String> mutate;
+      late Future<String> Function(Map<String, dynamic>) mutate;
 
       await tester.pumpWidget(
         _app(
           ConvexProvider(
             client: client,
-            child: ConvexMutation<String>(
-              mutation: 'files:attach',
+            child: ConvexMutation<Map<String, dynamic>, String>(
+              mutation: ConvexMutationReference<Map<String, dynamic>, String>(
+                name: 'files:attach',
+                encode: (args) => args,
+                decode: (raw) => raw as String,
+              ),
               builder: (context, executor, snapshot) {
                 mutate = executor;
                 return const SizedBox();
@@ -388,16 +396,19 @@ void main() {
         'rejection', (tester) async {
       final client = _client()
         ..onMutate = (name, args) async => <String, String>{'id': 'x'};
-      late ConvexRequestExecutor<String> mutate;
+      late Future<String> Function(Map<String, dynamic>) mutate;
       late ConvexRequestSnapshot<String> latest;
 
       await tester.pumpWidget(
         _app(
           ConvexProvider(
             client: client,
-            child: ConvexMutation<String>(
-              mutation: 'tasks:create',
-              decode: (value) => value as String,
+            child: ConvexMutation<Map<String, dynamic>, String>(
+              mutation: ConvexMutationReference<Map<String, dynamic>, String>(
+                name: 'tasks:create',
+                encode: (args) => args,
+                decode: (value) => value as String,
+              ),
               builder: (context, executor, snapshot) {
                 mutate = executor;
                 latest = snapshot;
@@ -408,7 +419,10 @@ void main() {
         ),
       );
 
-      await expectLater(mutate(), throwsA(isA<ConvexDecodeException>()));
+      await expectLater(
+        mutate(const <String, dynamic>{}),
+        throwsA(isA<ConvexDecodeException>()),
+      );
       await tester.pump();
       expect(latest.error, isA<ConvexDecodeException>());
     });

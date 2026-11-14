@@ -53,7 +53,7 @@ class ConvexAction<T> extends StatefulWidget {
 class _ConvexActionState<T> extends State<ConvexAction<T>>
     with
         ConvexSafeRebuild<ConvexAction<T>>,
-        ConvexRequestState<ConvexAction<T>, T> {
+        ConvexRequestState<ConvexAction<T>, Map<String, dynamic>, T> {
   @override
   ConvexRuntimeClient? get clientOverride => widget.client;
 
@@ -64,7 +64,7 @@ class _ConvexActionState<T> extends State<ConvexAction<T>>
   ConvexDecoder<T>? get decoder => widget.decode;
 
   @override
-  ConvexRequestCall captureRequest() {
+  ConvexRequestCall<Map<String, dynamic>> captureRequest() {
     final actionName = widget.action;
     return (client, args) => client.action(actionName, args);
   }
@@ -75,8 +75,11 @@ class _ConvexActionState<T> extends State<ConvexAction<T>>
     updateRequestIdentity(nameChanged: oldWidget.action != widget.action);
   }
 
+  Future<T> _runAction([Map<String, dynamic> args = const {}]) =>
+      runRequest(args);
+
   @override
   Widget build(BuildContext context) {
-    return widget.builder(context, runRequest, requestSnapshot);
+    return widget.builder(context, _runAction, requestSnapshot);
   }
 }
