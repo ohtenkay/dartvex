@@ -124,8 +124,7 @@ class DartGenerator {
           node.functions.any(
             (function) =>
                 function.functionType == 'Mutation' ||
-                function.functionType == 'Query' &&
-                    _detectPagination(function) == null,
+                function.functionType == 'Query',
           )) {
         final widgetPath = _widgetFilePath(node);
         files[widgetPath] = _formatOrThrow(
@@ -255,6 +254,13 @@ class DartGenerator {
           addMember(
             '${methodName}Query',
             'typed query reference for "${function.identifier}"',
+          );
+        }
+        if (function.functionType == 'Query' &&
+            _detectPagination(function) != null) {
+          addMember(
+            '${methodName}PaginatedQuery',
+            'typed paginated query reference for "${function.identifier}"',
           );
         }
         // Paginated queries emit a single wrapper method, no Subscribe
@@ -446,8 +452,7 @@ class DartGenerator {
           if (widgetNode.functions.any(
             (function) =>
                 function.functionType == 'Mutation' ||
-                function.functionType == 'Query' &&
-                    _detectPagination(function) == null,
+                function.functionType == 'Query',
           )) {
             buffer.writeln("export '${_widgetFilePath(widgetNode)}';");
           }
@@ -504,10 +509,7 @@ class DartGenerator {
       onSkip: context.warnings.add,
     );
     if (pagination != null) {
-      return _RenderedFunction(
-        methods: _renderPaginatedQuery(function, pagination, context: context),
-        helpers: '',
-      );
+      return _renderPaginatedQuery(function, pagination, context: context);
     }
 
     final mapper = TypeMapper(naming: _naming);
@@ -819,7 +821,7 @@ class DartGenerator {
     return _PaginationInfo(elementType: elementType, otherArgs: otherArgs);
   }
 
-  String _renderPaginatedQuery(
+  _RenderedFunction _renderPaginatedQuery(
     FunctionSpec function,
     _PaginationInfo info, {
     required TypeRenderContext context,
@@ -876,6 +878,18 @@ class DartGenerator {
       }
     }
 
+    var referenceArgsType = 'NoArgs';
+    var referenceEncode = 'const <String, dynamic>{}';
+    if (info.otherArgs.isNotEmpty) {
+      final mappedArgs = mapper.mapType(
+        ConvexObjectType(info.otherArgs),
+        suggestedName: '${functionPrefix}Args',
+        context: context,
+      );
+      referenceArgsType = mappedArgs.annotation;
+      referenceEncode = mappedArgs.encode('args');
+    }
+    final referenceName = '${methodName}PaginatedQueryReference';
     final signature = <String>[...argsFields, 'int pageSize = 20'].join(', ');
     final argsMap =
         argsMapEntries.isEmpty
@@ -902,7 +916,19 @@ class DartGenerator {
           ..writeln('  );')
           ..write('}');
 
-    return methodBuffer.toString();
+    methodBuffer
+      ..writeln()
+      ..writeln(
+        'ConvexPaginatedQueryReference<$referenceArgsType, $elementAnnotation> get ${methodName}PaginatedQuery => $referenceName;',
+      );
+    final helper = '''
+final ConvexPaginatedQueryReference<$referenceArgsType, $elementAnnotation> $referenceName = ConvexPaginatedQueryReference(
+  name: ${dartSingleQuotedString(function.convexFunctionName)},
+  encode: (args) => $referenceEncode,
+  decodeItem: (raw) => $elementDecode,
+);
+''';
+    return _RenderedFunction(methods: methodBuffer.toString(), helpers: helper);
   }
 
   String _buildSchemaFile(Map<String, String> tableIdClassNames) {
@@ -1426,10 +1452,15 @@ class $widgetName extends StatelessWidget {
 ''');
     }
     for (final function in node.functions.where(
-      (function) =>
-          function.functionType == 'Query' &&
-          _detectPagination(function) == null,
+      (function) => function.functionType == 'Query',
     )) {
+      final pagination = _detectPagination(function);
+      if (pagination != null) {
+        declarations.add(
+          _renderPaginatedWidget(function, pagination, node, context),
+        );
+        continue;
+      }
       final prefix = _naming.typeName(function.functionName);
       final modulePrefix = _naming.moduleClassName(node.pathSegments);
       final baseName =
@@ -1560,6 +1591,142 @@ class $widgetName extends StatelessWidget {
     return '$generatedFileHeader\n$generatedFileIgnores\n'
         '// ignore_for_file: unnecessary_import\n\n'
         '${imports.render()}\n\n${declarations.join('\n')}';
+  }
+
+  String _renderPaginatedWidget(
+    FunctionSpec function,
+    _PaginationInfo info,
+    _ModuleNode node,
+    TypeRenderContext context,
+  ) {
+    final mapper = TypeMapper(naming: _naming);
+    final prefix = _naming.typeName(function.functionName);
+    final modulePrefix = _naming.moduleClassName(node.pathSegments);
+    final widgetName =
+        '${modulePrefix.substring(0, modulePrefix.length - 3)}${prefix}Query';
+    final methodName = _naming.methodName(function.functionName);
+    final itemType =
+        info.elementType == null
+            ? 'Map<String, dynamic>'
+            : mapper
+                .mapType(
+                  info.elementType!,
+                  suggestedName: '${prefix}PageItem',
+                  context: context,
+                )
+                .annotation;
+    final argsType =
+        info.otherArgs.isEmpty
+            ? 'NoArgs'
+            : mapper
+                .mapType(
+                  ConvexObjectType(info.otherArgs),
+                  suggestedName: '${prefix}Args',
+                  context: context,
+                )
+                .annotation;
+    final constructorArgs = <String>[];
+    final fields = <String>[];
+    final assignments = <String>[];
+    final usedNames = <String>{
+      'key',
+      'builder',
+      'snapshotBuilder',
+      'waitingBuilder',
+      'errorBuilder',
+      'client',
+      'pageSize',
+      'build',
+      'snapshot',
+      '${methodName}PaginatedQueryReference',
+    };
+    final fieldNames = mapper.resolveObjectFieldNames(
+      info.otherArgs.keys,
+      ownerName: '${prefix}Args',
+    );
+    for (final entry in info.otherArgs.entries) {
+      final fieldName = fieldNames[entry.key]!;
+      var widgetFieldName = fieldName;
+      while (usedNames.contains(widgetFieldName)) {
+        widgetFieldName = 'query${_naming.typeName(widgetFieldName)}';
+      }
+      usedNames.add(widgetFieldName);
+      final mapped = mapper.mapType(
+        entry.value.fieldType,
+        suggestedName:
+            '${prefix}Args${mapper.fieldTypeSuffix(entry.key, fieldName)}',
+        context: context,
+        fieldName: entry.key,
+      );
+      final fieldType =
+          entry.value.optional
+              ? 'Optional<${mapped.annotation}>'
+              : mapped.annotation;
+      fields.add('final $fieldType $widgetFieldName;');
+      constructorArgs.add(
+        entry.value.optional
+            ? 'this.$widgetFieldName = const Optional.absent()'
+            : 'required this.$widgetFieldName',
+      );
+      assignments.add('$fieldName: $widgetFieldName');
+    }
+    final argsExpression =
+        assignments.isEmpty ? 'const NoArgs()' : '(${assignments.join(', ')})';
+    return '''
+/// Flutter widget for the paginated ${function.convexFunctionName} query.
+class $widgetName extends StatelessWidget {
+  /// Creates a typed paginated query with default initial loading/error UI.
+  const $widgetName({super.key, required this.builder, this.client, this.pageSize = 20, this.waitingBuilder, this.errorBuilder, ${constructorArgs.join(', ')}})
+      : snapshotBuilder = null;
+
+  /// Creates a paginated query whose builder handles every snapshot state.
+  const $widgetName.snapshot({super.key, required this.snapshotBuilder, this.client, this.pageSize = 20, ${constructorArgs.join(', ')}})
+      : builder = null, waitingBuilder = null, errorBuilder = null;
+
+  /// Builds accumulated items and controls for loading more pages.
+  final PaginatedQueryWidgetBuilder<$itemType>? builder;
+
+  /// Builds every state, including errors with their original details.
+  final Widget Function(BuildContext, ConvexPaginatedQuerySnapshot<$itemType>, VoidCallback)? snapshotBuilder;
+
+  /// Optional runtime client override.
+  final ConvexRuntimeClient? client;
+
+  /// Number of items requested per page.
+  final int pageSize;
+
+  /// Overrides the initial loading UI.
+  final WidgetBuilder? waitingBuilder;
+
+  /// Overrides error UI when no items are available.
+  final Widget Function(BuildContext, Object)? errorBuilder;
+
+  ${fields.join('\n  ')}
+
+  @override
+  Widget build(BuildContext context) {
+    final buildSnapshot\$ = snapshotBuilder;
+    if (buildSnapshot\$ != null) {
+      return ConvexTypedPaginatedQuery<$argsType, $itemType>.snapshot(
+        query: ${methodName}PaginatedQueryReference,
+        args: $argsExpression,
+        pageSize: pageSize,
+        client: client,
+        snapshotBuilder: buildSnapshot\$,
+      );
+    }
+    return ConvexTypedPaginatedQuery<$argsType, $itemType>(
+      query: ${methodName}PaginatedQueryReference,
+      args: $argsExpression,
+      pageSize: pageSize,
+      client: client,
+      builder: builder!,
+      waitingBuilder: waitingBuilder,
+      errorBuilder: errorBuilder,
+    );
+  }
+}
+''';
   }
 
   void _validateModulePathSegment(String segment, String identifier) {

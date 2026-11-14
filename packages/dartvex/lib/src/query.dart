@@ -24,3 +24,22 @@ final class ConvexQueryReference<Args, Result> {
   /// Encodes a typed result for an optimistic query overlay.
   final Object? Function(Result value) encodeResult;
 }
+
+/// Generated metadata for a paginated query, excluding pagination options.
+final class ConvexPaginatedQueryReference<Args, Item> {
+  /// Creates a paginated query reference with argument and item codecs.
+  const ConvexPaginatedQueryReference({
+    required this.name,
+    required this.encode,
+    required this.decodeItem,
+  });
+
+  /// Convex function name.
+  final String name;
+
+  /// Encodes typed filter arguments; the pagination engine adds its options.
+  final Map<String, dynamic> Function(Args args) encode;
+
+  /// Decodes an individual page item.
+  final Item Function(dynamic raw) decodeItem;
+}

@@ -45,7 +45,9 @@ class ConvexTypedQuery<Args, Result> extends StatelessWidget {
   /// Overrides the initial loading UI.
   final WidgetBuilder? waitingBuilder;
 
-  /// Overrides the error UI.
+  /// Overrides the error UI, including the default retry icon.
+  ///
+  /// Use `ConvexQuery.retryOf(context)` as a custom retry button's callback.
   final Widget Function(BuildContext, Object)? errorBuilder;
 
   /// Optional runtime client override.
@@ -74,5 +76,17 @@ class ConvexTypedQuery<Args, Result> extends StatelessWidget {
       const Center(child: CircularProgressIndicator());
 
   static Widget _defaultErrorBuilder(BuildContext context, Object error) =>
-      Center(child: Text('Error: $error'));
+      Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Error: $error'),
+            IconButton(
+              tooltip: 'Retry',
+              onPressed: ConvexQuery.retryOf(context),
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+      );
 }
