@@ -2,6 +2,10 @@ import '../generator/naming.dart';
 import '../generator/string_literals.dart';
 import '../spec/function_spec.dart';
 import 'dart_type.dart';
+import 'discriminated_union.dart';
+import 'schema_type_registry.dart';
+import 'type_identity.dart';
+import 'union_metadata.dart';
 
 /// Renders encode and decode expressions for a generated value.
 typedef ExpressionRenderer = String Function(String expression);
@@ -23,16 +27,36 @@ class TypeMapperException implements Exception {
 /// Mutable context shared while rendering generated Dart types.
 class TypeRenderContext {
   /// Creates a render context with optional naming overrides.
-  ///
-  /// [tableIdClassNames] maps Convex table names to their generated
-  /// `ConvexTableId` subclass names. Tables missing from the map use the
-  /// default `<TableName>Id` naming.
-  TypeRenderContext({Naming? naming, Map<String, String>? tableIdClassNames})
-    : naming = naming ?? const Naming(),
-      tableIdClassNames = tableIdClassNames ?? const <String, String>{};
+  TypeRenderContext({
+    Naming? naming,
+    this.tableIdClassNames = const <String, String>{},
+    this.schemaTypes,
+    this.unionMetadata,
+    this.discriminator = 'kind',
+    this.externalTypeNames = const <String>{},
+    this.emitCodecs = true,
+  }) : naming = naming ?? const Naming();
 
   /// Naming helper used while reserving generated symbols.
   final Naming naming;
+
+  /// Shared schema types available while mapping endpoint validators.
+  final SchemaTypeRegistry? schemaTypes;
+
+  /// Variant constants that do not participate in wire codecs.
+  final UnionMetadataRegistry? unionMetadata;
+
+  /// Object-union discriminator field.
+  final String discriminator;
+
+  /// Type declarations supplied by another generated library.
+  final Set<String> externalTypeNames;
+
+  /// Whether private encoding and decoding helpers should be emitted.
+  final bool emitCodecs;
+
+  /// Shared schema base types referenced by this context.
+  final Set<String> usedSharedTypeNames = <String>{};
 
   /// Generated ID class names keyed by Convex table name.
   final Map<String, String> tableIdClassNames;
@@ -46,6 +70,7 @@ class TypeRenderContext {
   final List<String> _definitionOrder = <String>[];
   final Set<String> _reservedTypeNames = <String>{};
   final Map<String, String> _suggestedToReserved = <String, String>{};
+  final Map<String, String> _exactTypeOwners = <String, String>{};
 
   /// Whether the generated file needs `dart:typed_data`.
   bool usesTypedData = false;
@@ -66,6 +91,30 @@ class TypeRenderContext {
     _reservedTypeNames.add(candidate);
     _suggestedToReserved[normalized] = candidate;
     return candidate;
+  }
+
+  /// Reserves an exact public type name or throws on collision.
+  String reserveExactTypeName(String suggestedName, {required String owner}) {
+    final normalized = naming.typeName(suggestedName);
+    final existingOwner = _exactTypeOwners[normalized];
+    if (existingOwner != null) {
+      if (existingOwner == owner) {
+        return normalized;
+      }
+      throw TypeMapperException(
+        'Generated type "$normalized" is used by both "$existingOwner" '
+        'and "$owner".',
+      );
+    }
+    if (_reservedTypeNames.contains(normalized)) {
+      throw TypeMapperException(
+        'Generated type name collision for "$normalized".',
+      );
+    }
+    _reservedTypeNames.add(normalized);
+    _suggestedToReserved[normalized] = normalized;
+    _exactTypeOwners[normalized] = owner;
+    return normalized;
   }
 
   final Map<String, List<String>> _unionCaseNames = <String, List<String>>{};
@@ -107,7 +156,22 @@ class TypeRenderContext {
       tableIdClassNames[tableName] ?? '${naming.typeName(tableName)}Id';
 
   /// Registers a generated type/helper definition if it has not been added yet.
-  void addDefinition(String name, String code) {
+  void addDeclaration(String name, String code) {
+    if (externalTypeNames.contains(name)) {
+      return;
+    }
+    _addDefinition(name, code);
+  }
+
+  /// Registers a private codec helper when codec emission is enabled.
+  void addCodec(String name, String code) {
+    if (!emitCodecs) {
+      return;
+    }
+    _addDefinition(name, code);
+  }
+
+  void _addDefinition(String name, String code) {
     final existing = _definitions[name];
     if (existing != null) {
       if (existing != code) {
@@ -123,6 +187,10 @@ class TypeRenderContext {
   String renderDefinitions() {
     return _definitionOrder.map((name) => _definitions[name]!).join('\n\n');
   }
+
+  /// Public declaration names emitted by this context.
+  Set<String> get declarationNames =>
+      _definitionOrder.where((name) => !name.startsWith('_')).toSet();
 }
 
 /// A mapped Dart type plus encode/decode logic for generated bindings.
@@ -201,7 +269,41 @@ class TypeMapper {
     ConvexType type, {
     required String suggestedName,
     required TypeRenderContext context,
+    String? fieldName,
+    bool skipSharedType = false,
   }) {
+    if (!skipSharedType) {
+      final sharedType = context.schemaTypes?.resolve(
+        type,
+        fieldName: fieldName,
+      );
+      if (sharedType != null) {
+        context.usedSharedTypeNames.add(sharedType.name);
+        final mapped = mapType(
+          sharedType.type,
+          suggestedName: sharedType.name,
+          context: context,
+          fieldName: fieldName,
+          skipSharedType: true,
+        );
+        if (sharedType.isDocument &&
+            type is ConvexUnionType &&
+            type.value.any(
+              (member) =>
+                  member is ConvexNullType ||
+                  member is ConvexLiteralType && member.value == null,
+            )) {
+          return MappedType(
+            dartType: DartNullableType(mapped.dartType),
+            encode: _nullableEncode(mapped.encode),
+            decode:
+                (expression) =>
+                    '$expression == null ? null : ${mapped.decode(expression)}',
+          );
+        }
+        return mapped;
+      }
+    }
     if (type is ConvexAnyType) {
       return MappedType(
         dartType: const DartPrimitiveType('dynamic'),
@@ -317,6 +419,7 @@ class TypeMapper {
         type.value,
         suggestedName: '${suggestedName}Item',
         context: context,
+        fieldName: fieldName,
       );
       return MappedType(
         dartType: DartListType(item.dartType),
@@ -350,6 +453,7 @@ class TypeMapper {
         type.values.fieldType,
         suggestedName: '${suggestedName}Value',
         context: context,
+        fieldName: fieldName,
       );
       return MappedType(
         dartType: DartMapType(
@@ -405,6 +509,7 @@ class TypeMapper {
           field.fieldType,
           suggestedName: '$typeName${fieldTypeSuffix(rawName, safeName)}',
           context: context,
+          fieldName: rawName,
         );
         final fieldType =
             field.optional
@@ -447,21 +552,21 @@ class TypeMapper {
         ..write('}');
 
       final typedef = DartRecordType(fields);
-      context.addDefinition(
+      context.addDeclaration(
         typeName,
         'typedef $typeName = ${typedef.annotation};',
       );
       // The parameter is `value$` (not `value`): the destructured locals are
       // named after the user's fields, so a field named `value` would
       // otherwise shadow the parameter inside its own initializer.
-      context.addDefinition(
+      context.addCodec(
         '_encode$typeName',
         'Map<String, dynamic> _encode$typeName($typeName value\$) {\n'
             '  final (${fields.map((field) => '${field.name}: ${field.name}').join(', ')}) = value\$;\n'
             '  return ${encodeBuffer.toString()};\n'
             '}',
       );
-      context.addDefinition('_decode$typeName', decodeBuffer.toString());
+      context.addCodec('_decode$typeName', decodeBuffer.toString());
       return MappedType(
         dartType: DartNamedType(typeName),
         encode: (expression) => '_encode$typeName($expression)',
@@ -469,7 +574,12 @@ class TypeMapper {
       );
     }
     if (type is ConvexUnionType) {
-      return _mapUnion(type, suggestedName: suggestedName, context: context);
+      return _mapUnion(
+        type,
+        suggestedName: suggestedName,
+        context: context,
+        fieldName: fieldName,
+      );
     }
     throw TypeMapperException('Unsupported Convex type "${type.type}"');
   }
@@ -494,6 +604,7 @@ class TypeMapper {
     ConvexUnionType union, {
     required String suggestedName,
     required TypeRenderContext context,
+    String? fieldName,
   }) {
     // v.literal(null) admits exactly the same values as v.null(); treating it
     // as a null member keeps degenerate unions like
@@ -511,6 +622,7 @@ class TypeMapper {
         const ConvexNullType(),
         suggestedName: suggestedName,
         context: context,
+        fieldName: fieldName,
       );
     }
 
@@ -541,6 +653,7 @@ class TypeMapper {
         ),
         suggestedName: suggestedName,
         context: context,
+        fieldName: fieldName,
       );
     }
 
@@ -592,6 +705,16 @@ class TypeMapper {
         seen[name] = i;
       }
 
+      final metadata =
+          context.unionMetadata?.resolve(union) ??
+          const <UnionMetadataProperty>[];
+      for (final property in metadata) {
+        if (enumNames.contains(property.name)) {
+          throw TypeMapperException(
+            'Union metadata property "${property.name}" collides with an enum value in "$typeName".',
+          );
+        }
+      }
       final enumBuffer = StringBuffer('enum $typeName {\n');
       for (var index = 0; index < literals.length; index += 1) {
         final literal = literals[index];
@@ -604,7 +727,19 @@ class TypeMapper {
         ..writeln(';')
         ..writeln()
         ..writeln('  const $typeName(this.value);')
-        ..writeln('  final Object? value;')
+        ..writeln('  final Object? value;');
+      for (final property in metadata) {
+        enumBuffer.writeln(
+          '  ${property.annotation} get ${property.name} => switch (this) {',
+        );
+        for (var index = 0; index < literals.length; index++) {
+          enumBuffer.writeln(
+            '    $typeName.${enumNames[index]} => ${property.values[literals[index].value]},',
+          );
+        }
+        enumBuffer.writeln('  };');
+      }
+      enumBuffer
         ..writeln()
         ..writeln('  static $typeName fromJson(dynamic raw) {')
         ..writeln('    switch (raw) {');
@@ -626,7 +761,7 @@ class TypeMapper {
         ..writeln('    }')
         ..writeln('  }')
         ..write('}');
-      context.addDefinition(typeName, enumBuffer.toString());
+      context.addDeclaration(typeName, enumBuffer.toString());
       final dartType =
           nullable
               ? DartNullableType(DartNamedType(typeName))
@@ -654,10 +789,25 @@ class TypeMapper {
         ),
         suggestedName: suggestedName,
         context: context,
+        fieldName: fieldName,
       );
     }
 
     _assertUnionCanBeDecoded(nonNull, suggestedName);
+
+    final discriminated = inspectDiscriminatedUnion(
+      ConvexUnionType(nonNull),
+      discriminator: context.discriminator,
+      naming: _naming,
+    );
+    if (discriminated != null) {
+      return _mapDiscriminatedUnion(
+        discriminated,
+        suggestedName: suggestedName,
+        context: context,
+        nullable: nullable,
+      );
+    }
 
     final typeName = context.reserveTypeName(suggestedName);
     // Claim the case class names before mapping the members: a member's
@@ -691,14 +841,273 @@ class TypeMapper {
         ..writeln();
     }
 
-    context.addDefinition(typeName, buffer.toString().trimRight());
-    context.addDefinition(
-      '_encode$typeName',
-      _renderUnionEncode(typeName, cases),
+    context.addDeclaration(typeName, buffer.toString().trimRight());
+    context.addCodec('_encode$typeName', _renderUnionEncode(typeName, cases));
+    context.addCodec('_decode$typeName', _renderUnionDecode(typeName, cases));
+
+    final dartType =
+        nullable
+            ? DartNullableType(DartNamedType(typeName))
+            : DartNamedType(typeName);
+    return MappedType(
+      dartType: dartType,
+      encode:
+          nullable
+              ? _nullableEncode((expression) => '_encode$typeName($expression)')
+              : (expression) => '_encode$typeName($expression)',
+      decode:
+          (expression) =>
+              nullable
+                  ? '$expression == null ? null : _decode$typeName($expression)'
+                  : '_decode$typeName($expression)',
     );
-    context.addDefinition(
+  }
+
+  MappedType _mapDiscriminatedUnion(
+    DiscriminatedUnion union, {
+    required String suggestedName,
+    required TypeRenderContext context,
+    required bool nullable,
+  }) {
+    final typeName = context.reserveTypeName(suggestedName);
+    final declaration = StringBuffer(
+      'sealed class $typeName {\n  const $typeName();\n',
+    );
+    final metadata =
+        context.unionMetadata?.resolve(
+          ConvexUnionType([for (final member in union.members) member.object]),
+        ) ??
+        const <UnionMetadataProperty>[];
+    for (final property in metadata) {
+      declaration.writeln('  ${property.annotation} get ${property.name};');
+    }
+    final fieldNames = _naming.resolveFieldNames({
+      for (final member in union.members)
+        ...member.object.value.keys.where((key) => key != union.discriminator),
+    });
+    final commonFields = <String, _DiscriminatedField>{};
+    for (final entry in union.members.first.object.value.entries) {
+      if (entry.key == union.discriminator) continue;
+      final field = entry.value;
+      if (!union.members.every((member) {
+        final other = member.object.value[entry.key];
+        return other != null &&
+            other.optional == field.optional &&
+            convexTypeIdentity(other.fieldType) ==
+                convexTypeIdentity(field.fieldType);
+      })) {
+        continue;
+      }
+      final mapped = mapType(
+        field.fieldType,
+        suggestedName:
+            '$typeName${fieldTypeSuffix(entry.key, fieldNames[entry.key]!)}',
+        context: context,
+        fieldName: entry.key,
+      );
+      final name = fieldNames[entry.key]!;
+      commonFields[entry.key] = _DiscriminatedField(
+        rawName: entry.key,
+        name: name,
+        mappedType: mapped,
+        optional: field.optional,
+      );
+      final annotation =
+          field.optional ? 'Optional<${mapped.annotation}>' : mapped.annotation;
+      declaration.writeln('  $annotation get $name;');
+    }
+    if (commonFields.isNotEmpty) {
+      declaration
+        ..writeln()
+        ..writeln(
+          _renderCopyWithSignature(
+            typeName,
+            commonFields.values,
+            abstract: true,
+          ),
+        );
+    }
+    declaration.writeln('}');
+    final encodeCases = <String>[];
+    final decodeCases = <String>[];
+
+    for (final member in union.members) {
+      final className = context.reserveExactTypeName(
+        member.className,
+        owner: typeName,
+      );
+      final fields = <_DiscriminatedField>[];
+      final safeNameToRaw = <String, List<String>>{};
+      for (final rawName in member.object.value.keys) {
+        if (rawName == union.discriminator) {
+          continue;
+        }
+        final safeName = fieldNames[rawName]!;
+        if (safeName == 'copyWith') {
+          throw TypeMapperException(
+            'Field "$rawName" in "$className" maps to Dart name "copyWith", '
+            'which is reserved for the generated copy method.',
+          );
+        }
+        (safeNameToRaw[safeName] ??= <String>[]).add(rawName);
+      }
+      for (final entry in safeNameToRaw.entries) {
+        if (entry.value.length > 1) {
+          throw TypeMapperException(
+            'Field name collision in "$className": fields '
+            '${entry.value.map((name) => '"$name"').join(', ')} '
+            'all map to Dart name "${entry.key}".',
+          );
+        }
+      }
+      for (final entry in member.object.value.entries) {
+        if (entry.key == union.discriminator) {
+          continue;
+        }
+        fields.add(
+          commonFields[entry.key] ??
+              _DiscriminatedField(
+                rawName: entry.key,
+                name: fieldNames[entry.key]!,
+                mappedType: mapType(
+                  entry.value.fieldType,
+                  suggestedName:
+                      '$className${fieldTypeSuffix(entry.key, fieldNames[entry.key]!)}',
+                  context: context,
+                  fieldName: entry.key,
+                ),
+                optional: entry.value.optional,
+              ),
+        );
+      }
+
+      declaration
+        ..writeln()
+        ..writeln('final class $className extends $typeName {');
+      if (fields.isEmpty) {
+        declaration.writeln('  const $className();');
+      } else {
+        declaration
+          ..writeln('  const $className({')
+          ..writeAll(
+            fields.map((field) => '    required this.${field.name},\n'),
+          )
+          ..writeln('  });');
+        for (final field in fields) {
+          final annotation =
+              field.optional
+                  ? 'Optional<${field.mappedType.annotation}>'
+                  : field.mappedType.annotation;
+          declaration
+            ..writeln()
+            ..writeln('  final $annotation ${field.name};');
+        }
+        declaration
+          ..writeln()
+          ..writeln(
+            _renderVariantCopyWith(
+              className,
+              fields,
+              overridesBase: commonFields.isNotEmpty,
+            ),
+          );
+      }
+      for (final property in metadata) {
+        declaration.writeln(
+          '  @override\n  ${property.annotation} get ${property.name} => ${property.values[member.literal]};',
+        );
+      }
+      declaration.writeln('}');
+
+      final encoded = StringBuffer(
+        '<String, dynamic>{'
+        '${dartSingleQuotedString(union.discriminator)}: '
+        '${dartSingleQuotedString(member.literal)},',
+      );
+      for (final field in fields) {
+        final key = dartSingleQuotedString(field.rawName);
+        if (field.optional) {
+          encoded.write(
+            'if (${field.name}.isDefined) $key: '
+            '${field.mappedType.encode('${field.name}.value')},',
+          );
+        } else {
+          encoded.write('$key: ${field.mappedType.encode(field.name)},');
+        }
+      }
+      encoded.write('}');
+      final pattern =
+          fields.isEmpty
+              ? '$className()'
+              : '$className('
+                  '${fields.map((field) => '${field.name}: final ${field.name}').join(', ')})';
+      encodeCases.add('    case $pattern: return $encoded;');
+
+      final decoded = StringBuffer();
+      for (final field in fields.where((field) => !field.optional)) {
+        final key = dartSingleQuotedString(field.rawName);
+        decoded
+          ..writeln('        if (!map.containsKey($key)) {')
+          ..writeln(
+            '          throw FormatException('
+            '${dartSingleQuotedString('Missing required field "${field.rawName}" for $className')}'
+            ');',
+          )
+          ..writeln('        }');
+      }
+      if (fields.isEmpty) {
+        decoded.writeln('        return const $className();');
+      } else {
+        decoded.writeln('        return $className(');
+        for (final field in fields) {
+          final key = dartSingleQuotedString(field.rawName);
+          final expression = field.mappedType.decode('map[$key]');
+          decoded.writeln(
+            field.optional
+                ? '          ${field.name}: map.containsKey($key) '
+                    '? Optional.of($expression) : const Optional.absent(),'
+                : '          ${field.name}: $expression,',
+          );
+        }
+        decoded.writeln('        );');
+      }
+      decodeCases.add(
+        '      case ${dartSingleQuotedString(member.literal)}:\n'
+        '${decoded.toString().trimRight()}',
+      );
+    }
+
+    context.addDeclaration(typeName, declaration.toString().trimRight());
+    context.addCodec(
+      '_encode$typeName',
+      'Map<String, dynamic> _encode$typeName($typeName value) {\n'
+          '  switch (value) {\n'
+          '${encodeCases.join('\n')}\n'
+          '  }\n'
+          '}',
+    );
+    final discriminatorKey = dartSingleQuotedString(union.discriminator);
+    context.addCodec(
       '_decode$typeName',
-      _renderUnionDecode(typeName, cases),
+      '$typeName _decode$typeName(dynamic raw) {\n'
+          "  final map = expectMap(raw, label: '$typeName');\n"
+          '  if (!map.containsKey($discriminatorKey)) {\n'
+          '    throw FormatException('
+          '${dartSingleQuotedString('Missing discriminator "${union.discriminator}" for $typeName')}'
+          ');\n'
+          '  }\n'
+          "  final discriminator = expectString(\n"
+          '    map[$discriminatorKey],\n'
+          "    label: '$typeName${_naming.typeName(union.discriminator)}',\n"
+          '  );\n'
+          '  switch (discriminator) {\n'
+          '${decodeCases.join('\n')}\n'
+          '    default:\n'
+          "      throw FormatException(\n"
+          "        'Unknown $typeName discriminator: \$discriminator',\n"
+          '      );\n'
+          '  }\n'
+          '}',
     );
 
     final dartType =
@@ -1023,4 +1432,82 @@ class _UnionCase {
 
   final String className;
   final MappedType mappedType;
+}
+
+/// Whether [type] already accepts null, so `copyWith` needs [Optional] to tell
+/// "set to null" apart from "keep".
+bool _acceptsNull(MappedType type) =>
+    type.dartType is DartNullableType ||
+    type.annotation == 'dynamic' ||
+    type.annotation == 'Null';
+
+String _copyWithParameter(_DiscriminatedField field, {required bool abstract}) {
+  final annotation = field.mappedType.annotation;
+  if (field.optional) {
+    return 'Optional<$annotation>? ${field.name}';
+  }
+  if (_acceptsNull(field.mappedType)) {
+    return 'Optional<$annotation> ${field.name}'
+        '${abstract ? '' : ' = const Optional.absent()'}';
+  }
+  return '$annotation? ${field.name}';
+}
+
+String _copyWithArgument(_DiscriminatedField field) {
+  final name = field.name;
+  if (!field.optional && _acceptsNull(field.mappedType)) {
+    return '$name.isDefined ? $name.value : this.$name';
+  }
+  return '$name ?? this.$name';
+}
+
+const _copyWithDoc =
+    '  /// Returns a copy with the given fields replaced. Nullable fields take\n'
+    '  /// an [Optional], so `Optional.of(null)` clears them.\n';
+
+/// `copyWith` on a sealed base, over the fields every variant shares. Each
+/// variant overrides it, so callers need not match on the variant.
+String _renderCopyWithSignature(
+  String typeName,
+  Iterable<_DiscriminatedField> fields, {
+  required bool abstract,
+}) {
+  final buffer = StringBuffer(_copyWithDoc)..writeln('  $typeName copyWith({');
+  for (final field in fields) {
+    buffer.writeln('    ${_copyWithParameter(field, abstract: abstract)},');
+  }
+  buffer.write('  });');
+  return buffer.toString();
+}
+
+String _renderVariantCopyWith(
+  String className,
+  List<_DiscriminatedField> fields, {
+  required bool overridesBase,
+}) {
+  final buffer = StringBuffer(overridesBase ? '  @override\n' : _copyWithDoc)
+    ..writeln('  $className copyWith({');
+  for (final field in fields) {
+    buffer.writeln('    ${_copyWithParameter(field, abstract: false)},');
+  }
+  buffer.writeln('  }) => $className(');
+  for (final field in fields) {
+    buffer.writeln('    ${field.name}: ${_copyWithArgument(field)},');
+  }
+  buffer.write('  );');
+  return buffer.toString();
+}
+
+class _DiscriminatedField {
+  const _DiscriminatedField({
+    required this.rawName,
+    required this.name,
+    required this.mappedType,
+    required this.optional,
+  });
+
+  final String rawName;
+  final String name;
+  final MappedType mappedType;
+  final bool optional;
 }

@@ -3,6 +3,7 @@
 
 import '../runtime.dart';
 import '../schema.dart';
+
 import 'package:dartvex/dartvex.dart';
 
 class EventsApi {
@@ -114,110 +115,80 @@ class EventsApi {
   }
 }
 
-enum FieldResult1Value2 {
+enum ChoiceValue {
   aValue('a'),
   bValue('b');
 
-  const FieldResult1Value2(this.value);
+  const ChoiceValue(this.value);
   final Object? value;
 
-  static FieldResult1Value2 fromJson(dynamic raw) {
+  static ChoiceValue fromJson(dynamic raw) {
     switch (raw) {
       case 'a':
-        return FieldResult1Value2.aValue;
+        return ChoiceValue.aValue;
       case 'b':
-        return FieldResult1Value2.bValue;
+        return ChoiceValue.bValue;
       default:
-        throw FormatException('Expected one of a, b for FieldResult1Value2');
+        throw FormatException('Expected one of a, b for ChoiceValue');
     }
   }
-}
-
-typedef FieldResult1 = ({String kind, FieldResult1Value2 value});
-
-Map<String, dynamic> _encodeFieldResult1(FieldResult1 value$) {
-  final (kind: kind, value: value) = value$;
-  return <String, dynamic>{'kind': kind, 'value': value.value};
-}
-
-FieldResult1 _decodeFieldResult1(dynamic raw) {
-  final map = expectMap(raw, label: 'FieldResult1');
-  if (!map.containsKey('kind')) {
-    throw FormatException('Missing required field "kind" for FieldResult1');
-  }
-  if (!map.containsKey('value')) {
-    throw FormatException('Missing required field "value" for FieldResult1');
-  }
-  return (
-    kind: expectLiteral<String>(
-      map['kind'],
-      'choice',
-      label: 'FieldResult1Kind',
-    ),
-    value: FieldResult1Value2.fromJson(map['value']),
-  );
-}
-
-typedef FieldResult2 = ({String kind, String value});
-
-Map<String, dynamic> _encodeFieldResult2(FieldResult2 value$) {
-  final (kind: kind, value: value) = value$;
-  return <String, dynamic>{'kind': kind, 'value': value};
-}
-
-FieldResult2 _decodeFieldResult2(dynamic raw) {
-  final map = expectMap(raw, label: 'FieldResult2');
-  if (!map.containsKey('kind')) {
-    throw FormatException('Missing required field "kind" for FieldResult2');
-  }
-  if (!map.containsKey('value')) {
-    throw FormatException('Missing required field "value" for FieldResult2');
-  }
-  return (
-    kind: expectLiteral<String>(map['kind'], 'text', label: 'FieldResult2Kind'),
-    value: expectString(map['value'], label: 'FieldResult2Value'),
-  );
 }
 
 sealed class FieldResult {
   const FieldResult();
 }
 
-class FieldResult1Value extends FieldResult {
-  const FieldResult1Value(this.value);
-  final FieldResult1 value;
+final class Choice extends FieldResult {
+  const Choice({required this.value});
+
+  final ChoiceValue value;
+
+  /// Returns a copy with the given fields replaced. Nullable fields take
+  /// an [Optional], so `Optional.of(null)` clears them.
+  Choice copyWith({ChoiceValue? value}) => Choice(value: value ?? this.value);
 }
 
-class FieldResult2Value extends FieldResult {
-  const FieldResult2Value(this.value);
-  final FieldResult2 value;
+final class Text extends FieldResult {
+  const Text({required this.value});
+
+  final String value;
+
+  /// Returns a copy with the given fields replaced. Nullable fields take
+  /// an [Optional], so `Optional.of(null)` clears them.
+  Text copyWith({String? value}) => Text(value: value ?? this.value);
 }
 
-dynamic _encodeFieldResult(FieldResult value) {
+Map<String, dynamic> _encodeFieldResult(FieldResult value) {
   switch (value) {
-    case FieldResult1Value(value: final inner):
-      return _encodeFieldResult1(inner);
-    case FieldResult2Value(value: final inner):
-      return _encodeFieldResult2(inner);
+    case Choice(value: final value):
+      return <String, dynamic>{'kind': 'choice', 'value': value.value};
+    case Text(value: final value):
+      return <String, dynamic>{'kind': 'text', 'value': value};
   }
 }
 
 FieldResult _decodeFieldResult(dynamic raw) {
-  final errors = <String>[];
-  try {
-    return FieldResult1Value(_decodeFieldResult1(raw));
-  } catch (e) {
-    errors.add('FieldResult1Value: $e');
+  final map = expectMap(raw, label: 'FieldResult');
+  if (!map.containsKey('kind')) {
+    throw FormatException('Missing discriminator "kind" for FieldResult');
   }
-  try {
-    return FieldResult2Value(_decodeFieldResult2(raw));
-  } catch (e) {
-    errors.add('FieldResult2Value: $e');
+  final discriminator = expectString(map['kind'], label: 'FieldResultKind');
+  switch (discriminator) {
+    case 'choice':
+      if (!map.containsKey('value')) {
+        throw FormatException('Missing required field "value" for Choice');
+      }
+      return Choice(value: ChoiceValue.fromJson(map['value']));
+    case 'text':
+      if (!map.containsKey('value')) {
+        throw FormatException('Missing required field "value" for Text');
+      }
+      return Text(value: expectString(map['value'], label: 'TextValue'));
+    default:
+      throw FormatException(
+        'Unknown FieldResult discriminator: $discriminator',
+      );
   }
-  throw FormatException(
-    'Expected FieldResult but received ${describeType(raw)}.\n'
-    'Tried: ${errors.join(", ")}',
-  );
 }
 
 typedef LabelsResult2Value2 = ({double count});

@@ -522,7 +522,7 @@ void main() {
     });
 
     test('union case classes never collide with nested member types', () {
-      final context = TypeRenderContext();
+      final context = TypeRenderContext(discriminator: 'tag');
       final mapper = TypeMapper();
 
       // Member 1's `value` enum would be named FieldResult1Value, exactly

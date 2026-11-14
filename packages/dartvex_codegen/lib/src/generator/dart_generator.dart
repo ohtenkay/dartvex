@@ -1,7 +1,10 @@
 import 'package:dart_style/dart_style.dart';
 
 import '../spec/function_spec.dart';
+import '../spec/schema_spec.dart';
+import '../types/schema_type_registry.dart';
 import '../types/type_mapper.dart';
+import '../types/union_metadata.dart';
 import 'imports.dart';
 import 'naming.dart';
 import 'string_literals.dart';
@@ -50,6 +53,8 @@ class DartGenerator {
   DartGenerator({
     Naming? naming,
     this.clientImport = 'package:dartvex/dartvex.dart',
+    this.schema,
+    this.discriminator = 'kind',
   }) : _naming = naming ?? const Naming();
 
   final Naming _naming;
@@ -57,9 +62,32 @@ class DartGenerator {
   /// The import used for the generated runtime client dependency in modules.
   final String clientImport;
 
+  /// Optional Convex schema used to discover reusable union types.
+  final SchemaSpec? schema;
+
+  /// Required string-literal field used by discriminated object unions.
+  final String discriminator;
+
+  SchemaTypeRegistry? _schemaTypes;
+  UnionMetadataRegistry? _unionMetadata;
+  Set<String> _externalTypeNames = const <String>{};
+
   /// Generates the runtime, API modules, and schema types for [spec].
   GeneratedOutput generate(FunctionsSpec spec) {
-    final warnings = <String>[...spec.warnings];
+    final warnings = <String>[...spec.warnings, ...?schema?.warnings];
+    _schemaTypes =
+        schema == null
+            ? null
+            : SchemaTypeRegistry.fromSchema(
+              schema!,
+              discriminator: discriminator,
+              naming: _naming,
+            );
+    _unionMetadata = UnionMetadataRegistry(
+      schema?.unionMetadata ?? const [],
+      discriminator: discriminator,
+      naming: _naming,
+    );
     final root = _buildTree(spec, warnings);
     final tableIdClassNames = _resolveTableIdClassNames(
       _collectTableNames(root),
@@ -68,12 +96,21 @@ class DartGenerator {
 
     files['runtime.dart'] = _formatOrThrow(_buildRuntimeFile(), 'runtime.dart');
 
+    final sharedTypes = _renderSharedTypes(tableIdClassNames);
+    if (sharedTypes != null) {
+      files['types.dart'] = _formatOrThrow(sharedTypes, 'types.dart');
+    }
+
     for (final node in _flattenNodes(root)) {
       final isRoot = node.pathSegments.isEmpty;
       final filePath = isRoot ? 'api.dart' : _moduleFilePath(node);
       final typeContext = TypeRenderContext(
         naming: _naming,
         tableIdClassNames: tableIdClassNames,
+        schemaTypes: _schemaTypes,
+        unionMetadata: _unionMetadata,
+        discriminator: discriminator,
+        externalTypeNames: _externalTypeNames,
       );
       files[filePath] = _formatOrThrow(
         _renderNode(node, isRoot: isRoot, typeContext: typeContext),
@@ -87,6 +124,48 @@ class DartGenerator {
       'schema.dart',
     );
     return GeneratedOutput(files: files, warnings: warnings);
+  }
+
+  String? _renderSharedTypes(Map<String, String> tableIdClassNames) {
+    final registry = _schemaTypes;
+    if (registry == null || registry.types.isEmpty) {
+      _externalTypeNames = const <String>{};
+      return null;
+    }
+    final context = TypeRenderContext(
+      naming: _naming,
+      discriminator: discriminator,
+      emitCodecs: false,
+      tableIdClassNames: tableIdClassNames,
+      schemaTypes: _schemaTypes,
+      unionMetadata: _unionMetadata,
+    );
+    final mapper = TypeMapper(naming: _naming);
+    for (final sharedType in registry.types) {
+      mapper.mapType(
+        sharedType.type,
+        suggestedName: sharedType.name,
+        context: context,
+        fieldName: sharedType.fieldName,
+        skipSharedType: true,
+      );
+    }
+    _externalTypeNames = context.declarationNames;
+
+    final imports =
+        ImportManager()
+          ..add('./runtime.dart')
+          ..add('./schema.dart');
+    if (context.usesTypedData) {
+      imports.add('dart:typed_data');
+    }
+    return '${StringBuffer()
+      ..writeln(generatedFileHeader)
+      ..writeln(generatedFileIgnores)
+      ..writeln()
+      ..writeln(imports.render())
+      ..writeln()
+      ..writeln(context.renderDefinitions())}';
   }
 
   _ModuleNode _buildTree(FunctionsSpec spec, List<String> warnings) {
@@ -198,6 +277,11 @@ class DartGenerator {
       }
     }
 
+    for (final sharedType
+        in _schemaTypes?.types ?? const <SharedSchemaType>[]) {
+      visit(sharedType.type);
+    }
+
     for (final node in _flattenNodes(root)) {
       for (final function in node.functions) {
         visit(function.returns);
@@ -305,6 +389,11 @@ class DartGenerator {
     if (typeContext.usesTypedData) {
       imports.add('dart:typed_data');
     }
+    if (typeContext.usedSharedTypeNames.isNotEmpty) {
+      imports.add(
+        _naming.relativeImport(fromFile: filePath, targetFile: 'types.dart'),
+      );
+    }
 
     final buffer =
         StringBuffer()
@@ -317,8 +406,11 @@ class DartGenerator {
     if (isRoot) {
       buffer
         ..writeln("export 'runtime.dart';")
-        ..writeln("export 'schema.dart';")
-        ..writeln();
+        ..writeln("export 'schema.dart';");
+      if (_externalTypeNames.isNotEmpty) {
+        buffer.writeln("export 'types.dart';");
+      }
+      buffer.writeln();
     }
 
     final className = _naming.moduleClassName(node.pathSegments);
@@ -413,6 +505,7 @@ class DartGenerator {
               '${functionPrefix}Args'
               '${mapper.fieldTypeSuffix(entry.key, fieldName)}',
           context: context,
+          fieldName: entry.key,
         );
         if (entry.value.optional) {
           namedParameters.add(
@@ -650,6 +743,7 @@ class DartGenerator {
             '${functionPrefix}Args'
             '${mapper.fieldTypeSuffix(entry.key, fieldName)}',
         context: context,
+        fieldName: entry.key,
       );
       if (entry.value.optional) {
         argsFields.add(

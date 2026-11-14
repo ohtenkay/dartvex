@@ -457,7 +457,7 @@ void main() {
           'value': ConvexField(fieldType: ConvexStringType(), optional: false),
         }),
       ]);
-      final output = DartGenerator().generate(
+      final output = DartGenerator(discriminator: 'tag').generate(
         FunctionsSpec(
           url: 'https://example.com',
           functions: <BaseFunctionSpec>[

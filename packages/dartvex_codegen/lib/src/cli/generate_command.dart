@@ -6,6 +6,7 @@ import 'package:path/path.dart' as path;
 
 import '../generator/dart_generator.dart';
 import '../generator/file_emitter.dart';
+import '../spec/schema_spec_parser.dart';
 import '../spec/spec_parser.dart';
 import 'config.dart';
 import 'process_runner.dart';
@@ -117,6 +118,7 @@ class GenerateCommand {
       ..addOption('spec-file', help: 'Read an exported function spec file.')
       ..addOption('output', help: 'Directory for the generated bindings.')
       ..addOption('client-import', defaultsTo: 'package:dartvex/dartvex.dart')
+      ..addOption('discriminator', defaultsTo: 'kind')
       ..addFlag(
         'watch',
         negatable: false,
@@ -190,6 +192,7 @@ class GenerateCommand {
       dryRun: parsed['dry-run'] as bool,
       verbose: parsed['verbose'] as bool,
       watch: parsed['watch'] as bool,
+      discriminator: parsed['discriminator'] as String,
     );
     config.validate();
     final normalizedConfig = config.normalize();
@@ -198,6 +201,7 @@ class GenerateCommand {
       await _generateFromSource(
         normalizedConfig,
         await _loadSpecSource(normalizedConfig),
+        await _loadSchemaSource(normalizedConfig),
       );
       return 0;
     }
@@ -215,6 +219,7 @@ class GenerateCommand {
     );
     unawaited(_stopWatching?.then((_) => watcher.close()));
     String? lastGeneratedSource;
+    String? lastGeneratedSchemaSource;
 
     Future<void> regenerate() async {
       try {
@@ -227,14 +232,17 @@ class GenerateCommand {
           }
           return;
         }
-        if (source == lastGeneratedSource) {
+        final schemaSource = await _loadSchemaSource(config);
+        if (source == lastGeneratedSource &&
+            schemaSource == lastGeneratedSchemaSource) {
           if (config.verbose) {
-            _log('Function spec unchanged; skipping regeneration.');
+            _log('Function spec and schema unchanged; skipping regeneration.');
           }
           return;
         }
-        await _generateFromSource(config, source);
+        await _generateFromSource(config, source, schemaSource);
         lastGeneratedSource = source;
+        lastGeneratedSchemaSource = schemaSource;
       } on Exception catch (error) {
         // Includes FormatException from a partially written spec file.
         _errorLog('$error\nWaiting for the next change.');
@@ -259,10 +267,17 @@ class GenerateCommand {
   Future<void> _generateFromSource(
     GenerateConfig config,
     String specSource,
+    String? schemaSource,
   ) async {
     final spec = const SpecParser().parseString(specSource);
+    final schema =
+        schemaSource == null
+            ? null
+            : const SchemaSpecParser().parseString(schemaSource);
     final output = DartGenerator(
       clientImport: config.clientImport,
+      schema: schema,
+      discriminator: config.discriminator,
     ).generate(spec);
 
     if (config.dryRun) {
@@ -287,6 +302,19 @@ class GenerateCommand {
     for (final warning in output.warnings) {
       _errorLog('Warning: $warning');
     }
+  }
+
+  Future<String?> _loadSchemaSource(GenerateConfig config) async {
+    final projectDirectory = config.projectDirectory;
+    final processRunner = _processRunner;
+    if (projectDirectory == null || processRunner is! SchemaProcessRunner) {
+      return null;
+    }
+    final schemaRunner = processRunner as SchemaProcessRunner;
+    return schemaRunner.runSchemaSpec(
+      projectDirectory: projectDirectory,
+      verbose: config.verbose,
+    );
   }
 
   Future<void> _checkSpecSourceExists(GenerateConfig config) async {
