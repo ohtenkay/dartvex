@@ -86,9 +86,10 @@ class FunctionSpec extends BaseFunctionSpec {
   List<String> get modulePathSegments {
     final rawPath = convexFunctionName.split(':').first;
     final segments = rawPath.split('/').where((segment) => segment.isNotEmpty);
-    final result = segments
-        .map((segment) => segment.replaceAll(RegExp(r'\.[^.]+$'), ''))
-        .toList();
+    final result =
+        segments
+            .map((segment) => segment.replaceAll(RegExp(r'\.[^.]+$'), ''))
+            .toList();
     if (result.isNotEmpty && result.last == 'index') {
       result.removeLast();
     }
@@ -160,6 +161,37 @@ class ConvexNullType extends ConvexType {
 class ConvexBigIntType extends ConvexType {
   /// Creates a `bigint` type descriptor.
   const ConvexBigIntType() : super('bigint');
+}
+
+/// Represents the Convex `commitTs` type (`v.commitTs()`, convex 1.43+).
+///
+/// A commit timestamp is an int64 on the wire, so it is generated exactly like
+/// [ConvexBigIntType] (`BigInt`).
+class ConvexCommitTsType extends ConvexType {
+  /// Creates a `commitTs` type descriptor.
+  const ConvexCommitTsType() : super('commitTs');
+}
+
+/// Represents the Convex `function` type (`v.function()`, convex 1.49+): a
+/// function handle string naming another Convex function.
+///
+/// [fnType], [args], and [returns] describe the referenced function when the
+/// validator declares them. They are informational only (Convex does not
+/// validate them at runtime), so the handle is generated as a `String`.
+class ConvexFunctionHandleType extends ConvexType {
+  /// Creates a `function` handle type descriptor.
+  const ConvexFunctionHandleType({this.fnType, this.args, this.returns})
+    : super('function');
+
+  /// The declared kind of the referenced function (`query`, `mutation`, or
+  /// `action`), if any.
+  final String? fnType;
+
+  /// The declared argument validator of the referenced function, if any.
+  final ConvexType? args;
+
+  /// The declared return validator of the referenced function, if any.
+  final ConvexType? returns;
 }
 
 /// Represents the Convex `bytes` type.

@@ -1,4 +1,6 @@
 import 'package:dartvex/dartvex.dart' show ConvexQueryReference;
+// Keep the declared Flutter SDK floor, which predates material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 import 'query_builder.dart';

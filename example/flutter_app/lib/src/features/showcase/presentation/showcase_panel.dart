@@ -6,6 +6,8 @@ import 'package:dartvex/dartvex.dart'
         DartvexLogEvent,
         DartvexLogLevel;
 import 'package:dartvex_flutter/dartvex_flutter.dart';
+// Keep the declared Flutter SDK floor, which predates material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 import '../../../../convex_api/api.dart';
@@ -183,10 +185,10 @@ class _OptimisticDemoCardState extends State<_OptimisticDemoCard> {
           ),
           const SizedBox(height: 4),
           ConvexMutation<Map<String, dynamic>, dynamic>(
-            mutation: ConvexMutationReference(
+            mutation: ConvexMutationReference<Map<String, dynamic>, dynamic>(
               name: _failNext ? 'messages:failingSend' : 'messages:sendPublic',
               encode: (args) => args,
-              decode: (raw) => raw,
+              decode: (raw) => raw as dynamic,
             ),
             optimisticUpdate: (store) {
               final existing =

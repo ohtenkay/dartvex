@@ -49,9 +49,10 @@ class SchemaSpecParser {
       );
     }
 
-    final rawMetadata = decoded.containsKey('dartvexUnionMetadata')
-        ? decoded['dartvexUnionMetadata']
-        : <dynamic>[];
+    final rawMetadata =
+        decoded.containsKey('dartvexUnionMetadata')
+            ? decoded['dartvexUnionMetadata']
+            : <dynamic>[];
     if (rawMetadata is! List) {
       throw SpecParserException('dartvexUnionMetadata must be a list');
     }

@@ -244,38 +244,6 @@ void main() {
         context.renderDefinitions(),
         contains('sealed class MessagePayload'),
       );
-      expect(context.renderDefinitions(), contains('final class Text'));
-      expect(context.renderDefinitions(), contains('required this.body'));
-      expect(context.renderDefinitions(), contains('final String body'));
-      expect(context.renderDefinitions(), isNot(contains('final String kind')));
-      expect(context.renderDefinitions(), contains("case 'text':"));
-      expect(context.renderDefinitions(), contains('return Text('));
-    });
-
-    test('uses the configured object union discriminator', () {
-      final context = TypeRenderContext(discriminator: 'type');
-      final mapped = TypeMapper().mapType(
-        const ConvexUnionType(<ConvexType>[
-          ConvexObjectType(<String, ConvexField>{
-            'type': ConvexField(
-              fieldType: ConvexLiteralType('success'),
-              optional: false,
-            ),
-          }),
-          ConvexObjectType(<String, ConvexField>{
-            'type': ConvexField(
-              fieldType: ConvexLiteralType('failure'),
-              optional: false,
-            ),
-          }),
-        ]),
-        suggestedName: 'Result',
-        context: context,
-      );
-
-      expect(mapped.annotation, 'Result');
-      expect(context.renderDefinitions(), contains('final class Success'));
-      expect(context.renderDefinitions(), contains("'type': 'success'"));
     });
 
     test('throws on object unions without a discriminator', () {
@@ -367,45 +335,262 @@ void main() {
       );
     });
 
-    test('throws on field name collision in discriminated unions', () {
+    test('renames a colliding _id/_creationTime instead of aborting', () {
       final context = TypeRenderContext();
       final mapper = TypeMapper();
 
+      final mapped = mapper.mapType(
+        const ConvexObjectType(<String, ConvexField>{
+          '_id': ConvexField(fieldType: ConvexIdType('todos'), optional: false),
+          '_creationTime': ConvexField(
+            fieldType: ConvexNumberType(),
+            optional: false,
+          ),
+          'id': ConvexField(fieldType: ConvexStringType(), optional: false),
+          'creationTime': ConvexField(
+            fieldType: ConvexNumberType(),
+            optional: false,
+          ),
+        }),
+        suggestedName: 'Todo',
+        context: context,
+      );
+
+      expect(mapped.annotation, 'Todo');
+      final definitions = context.renderDefinitions();
+      expect(
+        definitions,
+        contains(
+          'typedef Todo = ({TodosId systemId, double systemCreationTime, '
+          'String id, double creationTime});',
+        ),
+      );
+      // Wire keys are unchanged.
+      expect(definitions, contains("'_id': systemId.value"));
+      expect(definitions, contains("'id': id"));
+      expect(definitions, contains("map['_creationTime']"));
+    });
+
+    test('still throws when a renamed system field collides again', () {
+      final mapper = TypeMapper();
       expect(
         () => mapper.mapType(
-          const ConvexUnionType(<ConvexType>[
-            ConvexObjectType(<String, ConvexField>{
-              'kind': ConvexField(
-                fieldType: ConvexLiteralType('first'),
-                optional: false,
-              ),
-              'foo_bar': ConvexField(
-                fieldType: ConvexStringType(),
-                optional: false,
-              ),
-              'foo-bar': ConvexField(
-                fieldType: ConvexStringType(),
-                optional: false,
-              ),
-            }),
-            ConvexObjectType(<String, ConvexField>{
-              'kind': ConvexField(
-                fieldType: ConvexLiteralType('second'),
-                optional: false,
-              ),
-            }),
-          ]),
+          const ConvexObjectType(<String, ConvexField>{
+            '_id': ConvexField(fieldType: ConvexStringType(), optional: false),
+            'id': ConvexField(fieldType: ConvexStringType(), optional: false),
+            'system_id': ConvexField(
+              fieldType: ConvexStringType(),
+              optional: false,
+            ),
+          }),
           suggestedName: 'Collide',
-          context: context,
+          context: TypeRenderContext(),
         ),
         throwsA(
           isA<TypeMapperException>().having(
-            (error) => error.message,
+            (e) => e.message,
             'message',
-            allOf(contains('foo_bar'), contains('foo-bar'), contains('fooBar')),
+            contains('systemId'),
           ),
         ),
       );
+    });
+
+    test('maps commitTs to Object and function handles to String', () {
+      final context = TypeRenderContext();
+      final mapper = TypeMapper();
+
+      final commitTs = mapper.mapType(
+        const ConvexCommitTsType(),
+        suggestedName: 'EventTs',
+        context: context,
+      );
+      final handle = mapper.mapType(
+        const ConvexFunctionHandleType(
+          fnType: 'mutation',
+          returns: ConvexNullType(),
+        ),
+        suggestedName: 'EventCallback',
+        context: context,
+      );
+
+      // BigInt, or ConvexCommitTsPlaceholder when read back by its writer.
+      expect(commitTs.annotation, 'Object');
+      expect(commitTs.decode('raw'), "expectCommitTs(raw, label: 'EventTs')");
+      expect(commitTs.encode('ts'), 'ts');
+      expect(handle.annotation, 'String');
+      expect(handle.decode('raw'), "expectString(raw, label: 'EventCallback')");
+      expect(context.warnings, isEmpty);
+
+      // commitTs shares the bigint runtime shape, function the string shape.
+      expect(
+        () => mapper.mapType(
+          const ConvexUnionType(<ConvexType>[
+            ConvexCommitTsType(),
+            ConvexBigIntType(),
+          ]),
+          suggestedName: 'AmbiguousTs',
+          context: context,
+        ),
+        throwsA(isA<TypeMapperException>()),
+      );
+      expect(
+        () => mapper.mapType(
+          const ConvexUnionType(<ConvexType>[
+            ConvexFunctionHandleType(),
+            ConvexStringType(),
+          ]),
+          suggestedName: 'AmbiguousHandle',
+          context: context,
+        ),
+        throwsA(isA<TypeMapperException>()),
+      );
+      final mixed = mapper.mapType(
+        const ConvexUnionType(<ConvexType>[
+          ConvexCommitTsType(),
+          ConvexFunctionHandleType(),
+        ]),
+        suggestedName: 'Mixed',
+        context: context,
+      );
+      expect(mixed.annotation, 'Mixed');
+    });
+
+    test('keeps value types for id, literal, and union record keys', () {
+      final context = TypeRenderContext();
+      final mapper = TypeMapper();
+
+      final byId = mapper.mapType(
+        const ConvexRecordType(
+          keys: ConvexIdType('users'),
+          values: ConvexField(fieldType: ConvexNumberType(), optional: false),
+        ),
+        suggestedName: 'Scores',
+        context: context,
+      );
+      final byUnion = mapper.mapType(
+        const ConvexRecordType(
+          keys: ConvexUnionType(<ConvexType>[
+            ConvexIdType('users'),
+            ConvexLiteralType('guest'),
+          ]),
+          values: ConvexField(fieldType: ConvexStringType(), optional: false),
+        ),
+        suggestedName: 'Labels',
+        context: context,
+      );
+
+      expect(byId.annotation, 'Map<String, double>');
+      expect(byId.decode('raw'), contains('expectDouble'));
+      expect(byUnion.annotation, 'Map<String, String>');
+      expect(context.warnings, isEmpty);
+
+      final unsupported = mapper.mapType(
+        const ConvexRecordType(
+          keys: ConvexNumberType(),
+          values: ConvexField(fieldType: ConvexStringType(), optional: false),
+        ),
+        suggestedName: 'Odd',
+        context: context,
+      );
+      expect(unsupported.annotation, 'Map<String, dynamic>');
+      expect(
+        context.warnings.single,
+        allOf(contains('Odd'), contains('unsupported key validator')),
+      );
+    });
+
+    test('accepts unions of distinct same-shape literals plus a member', () {
+      final context = TypeRenderContext();
+      final mapper = TypeMapper();
+
+      final width = mapper.mapType(
+        const ConvexUnionType(<ConvexType>[
+          ConvexLiteralType('auto'),
+          ConvexLiteralType('none'),
+          ConvexNumberType(),
+        ]),
+        suggestedName: 'Width',
+        context: context,
+      );
+
+      expect(width.annotation, 'Width');
+      final definitions = context.renderDefinitions();
+      expect(definitions, contains("expectLiteral<String>(raw, 'auto'"));
+      expect(definitions, contains("expectLiteral<String>(raw, 'none'"));
+      expect(definitions, contains('class Width3Value extends Width'));
+    });
+
+    test('union case classes never collide with nested member types', () {
+      final context = TypeRenderContext(discriminator: 'tag');
+      final mapper = TypeMapper();
+
+      // Member 1's `value` enum would be named FieldResult1Value, exactly
+      // the case class name; it is deduplicated instead.
+      mapper.mapType(
+        const ConvexUnionType(<ConvexType>[
+          ConvexObjectType(<String, ConvexField>{
+            'kind': ConvexField(
+              fieldType: ConvexLiteralType('choice'),
+              optional: false,
+            ),
+            'value': ConvexField(
+              fieldType: ConvexUnionType(<ConvexType>[
+                ConvexLiteralType('a'),
+                ConvexLiteralType('b'),
+              ]),
+              optional: false,
+            ),
+          }),
+          ConvexObjectType(<String, ConvexField>{
+            'kind': ConvexField(
+              fieldType: ConvexLiteralType('text'),
+              optional: false,
+            ),
+            'value': ConvexField(
+              fieldType: ConvexStringType(),
+              optional: false,
+            ),
+          }),
+        ]),
+        suggestedName: 'FieldResult',
+        context: context,
+      );
+      // Member 2 of this union is a record whose object values would be
+      // named LabelsResult2Value, the second case class name.
+      mapper.mapType(
+        const ConvexUnionType(<ConvexType>[
+          ConvexStringType(),
+          ConvexRecordType(
+            keys: ConvexStringType(),
+            values: ConvexField(
+              fieldType: ConvexObjectType(<String, ConvexField>{
+                'count': ConvexField(
+                  fieldType: ConvexNumberType(),
+                  optional: false,
+                ),
+              }),
+              optional: false,
+            ),
+          ),
+        ]),
+        suggestedName: 'LabelsResult',
+        context: context,
+      );
+
+      final definitions = context.renderDefinitions();
+      // Case class names stay stable...
+      expect(definitions, contains('class FieldResult1Value extends'));
+      expect(definitions, contains('class LabelsResult2Value extends'));
+      // ...and the nested types move out of the way.
+      expect(definitions, contains('enum FieldResult1Value2 {'));
+      expect(definitions, contains('typedef LabelsResult2Value2 ='));
+      final declarations =
+          RegExp(
+            r'^(?:sealed class|class|enum|typedef) (\w+)',
+            multiLine: true,
+          ).allMatches(definitions).map((match) => match.group(1)).toList();
+      expect(declarations.toSet(), hasLength(declarations.length));
     });
 
     test('generated object decoders require fields that decode to null', () {

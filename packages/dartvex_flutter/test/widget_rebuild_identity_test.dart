@@ -189,7 +189,7 @@ void main() {
           child: ConvexProvider(
             client: client,
             child: ConvexMutation<Map<String, dynamic>, String>(
-              mutation: ConvexMutationReference(
+              mutation: ConvexMutationReference<Map<String, dynamic>, String>(
                 name: 'messages:send',
                 encode: (args) => args,
                 decode: (value) => value as String,

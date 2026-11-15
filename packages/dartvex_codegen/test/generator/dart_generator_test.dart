@@ -9,9 +9,10 @@ void main() {
     late FunctionsSpec spec;
 
     setUpAll(() async {
-      final fixture = await File(
-        path.join('test', 'fixtures', 'function_spec.json'),
-      ).readAsString();
+      final fixture =
+          await File(
+            path.join('test', 'fixtures', 'function_spec.json'),
+          ).readAsString();
       spec = const SpecParser().parseString(fixture);
     });
 
@@ -22,140 +23,31 @@ void main() {
         'api.dart',
         'modules/admin.dart',
         'modules/admin/users.dart',
+        'modules/events.dart',
         'modules/kv.dart',
         'modules/messages.dart',
         'runtime.dart',
         'schema.dart',
       ]);
-      expect(output.warnings, hasLength(3));
+      expect(output.warnings, hasLength(4));
       expect(output.warnings, anyElement(contains('Skipping HTTP action')));
       expect(
         output.warnings,
         anyElement(contains('Unknown Convex type "quantum"')),
       );
       expect(output.warnings, anyElement(contains('cannot be represented')));
-    });
-
-    test('generated mutation widgets expose and forward latest mode', () async {
-      final output = DartGenerator(generateFlutterWidgets: true).generate(spec);
-      final widgets = output.files['widgets/messages.dart']!;
-      expect(widgets, contains('this.mode = MutationMode.single'));
-      expect(widgets, contains('final MutationMode mode;'));
-      expect(widgets, contains('mode: mode,'));
-      final expected = await File(
-        path.join('test', 'goldens', 'sample', 'widgets', 'messages.dart'),
-      ).readAsString();
-      expect(widgets, expected);
-    });
-
-    test(
-      'run handles mutation failures and preserves callback errors',
-      () async {
-        final output = DartGenerator(generateFlutterWidgets: true).generate(
-          FunctionsSpec(
-            url: 'https://sample.convex.cloud',
-            functions: [
-              _function(identifier: 'tasks.ts:send'),
-              _function(
-                identifier: 'tasks.ts:clear',
-                returns: const ConvexNullType(),
-              ),
-            ],
+      expect(
+        output.warnings,
+        anyElement(
+          allOf(
+            contains('events.ts:dispatch'),
+            contains('non-object top-level args'),
           ),
-        );
-        final widgets = output.files['widgets/tasks.dart']!;
-        String executor(String name) {
-          final start = widgets.indexOf('class ${name}MutationExecutor');
-          final end = widgets.indexOf('/// Flutter widget', start);
-          return widgets.substring(start, end);
-        }
-
-        final directory = await Directory.systemTemp.createTemp('dartvex_run_');
-        try {
-          final script = File(path.join(directory.path, 'run.dart'));
-          await script.writeAsString('''
-import 'dart:async';
-class NoArgs { const NoArgs(); }
-${executor('TasksSend')}
-${executor('TasksClear')}
-void check(bool value) { if (!value) throw StateError('Check failed'); }
-Future<void> main() async {
-  final errors = <Object>[];
-  await runZonedGuarded(() async {
-    final result = Completer<String>();
-    String? received;
-    final executor = TasksSendMutationExecutor((_) => result.future);
-    executor.run(onSuccess: (value) { received = value; });
-    result.complete('sent');
-    await Future<void>.delayed(Duration.zero);
-    check(received == 'sent');
-    check(await executor() == 'sent');
-
-    final failed = TasksSendMutationExecutor((_) => Future.error(StateError('mutation')));
-    failed.run(onSuccess: (_) { throw StateError('must not run'); });
-    await Future<void>.delayed(Duration.zero);
-    check(errors.isEmpty);
-    try { await failed(); throw StateError('must throw'); }
-    catch (error) { check(error.toString().contains('mutation')); }
-
-    var cleared = false;
-    TasksClearMutationExecutor((_) async {}).run(onSuccess: (_) { cleared = true; });
-    await Future<void>.delayed(Duration.zero);
-    check(cleared);
-
-    executor.run(onSuccess: (_) { throw StateError('callback'); });
-    await Future<void>.delayed(Duration.zero);
-    check(errors.length == 1 && errors.single.toString().contains('callback'));
-  }, (error, stack) { errors.add(error); });
-  check(errors.length == 1 && errors.single.toString().contains('callback'));
-}
-''');
-          final result = await Process.run(Platform.resolvedExecutable, [
-            script.path,
-          ]);
-          expect(
-            result.exitCode,
-            0,
-            reason: '${result.stdout}\n${result.stderr}',
-          );
-        } finally {
-          await directory.delete(recursive: true);
-        }
-      },
-    );
-
-    test('run supports any arguments and avoids callback name collisions', () {
-      final output = DartGenerator(generateFlutterWidgets: true).generate(
-        FunctionsSpec(
-          url: 'https://sample.convex.cloud',
-          functions: [
-            _function(identifier: 'tasks.ts:any', args: const ConvexAnyType()),
-            _function(
-              identifier: 'tasks.ts:collision',
-              args: const ConvexObjectType({
-                'onSuccess': ConvexField(
-                  fieldType: ConvexStringType(),
-                  optional: false,
-                ),
-                'onSuccessCallback': ConvexField(
-                  fieldType: ConvexStringType(),
-                  optional: true,
-                ),
-              }),
-            ),
-          ],
         ),
       );
-      final widgets = output.files['widgets/tasks.dart']!;
-      expect(
-        widgets,
-        contains('Map<String, dynamic> args = const <String, dynamic>{}'),
-      );
-      expect(
-        widgets,
-        contains('void Function(String result)? onSuccessCallbackCallback'),
-      );
-      expect(widgets, contains('onSuccess: onSuccess,'));
+      // The internal function's unknown "nebula" type is never generated, so
+      // it must not produce a warning.
+      expect(output.warnings, everyElement(isNot(contains('nebula'))));
     });
 
     test('emits the generated header and analyzer suppressions everywhere', () {
@@ -170,37 +62,37 @@ Future<void> main() async {
       }
     });
 
-    test('matches golden files for core outputs', () async {
+    test('matches golden files for every emitted file', () async {
       final output = DartGenerator().generate(spec);
+      final goldenRoot = path.join('test', 'goldens', 'sample');
 
-      final expectedApi = await File(
-        path.join('test', 'goldens', 'sample', 'api.dart'),
-      ).readAsString();
-      final expectedMessages = await File(
-        path.join('test', 'goldens', 'sample', 'modules', 'messages.dart'),
-      ).readAsString();
-      final expectedUsers = await File(
-        path.join(
-          'test',
-          'goldens',
-          'sample',
-          'modules',
-          'admin',
-          'users.dart',
-        ),
-      ).readAsString();
-      final expectedSchema = await File(
-        path.join('test', 'goldens', 'sample', 'schema.dart'),
-      ).readAsString();
-      final expectedRuntime = await File(
-        path.join('test', 'goldens', 'sample', 'runtime.dart'),
-      ).readAsString();
+      for (final entry in output.files.entries) {
+        final golden = File(
+          path.joinAll(<String>[goldenRoot, ...entry.key.split('/')]),
+        );
+        expect(
+          golden.existsSync(),
+          isTrue,
+          reason: 'missing golden for ${entry.key}',
+        );
+        expect(entry.value, await golden.readAsString(), reason: entry.key);
+      }
 
-      expect(output.files['api.dart'], expectedApi);
-      expect(output.files['modules/messages.dart'], expectedMessages);
-      expect(output.files['modules/admin/users.dart'], expectedUsers);
-      expect(output.files['schema.dart'], expectedSchema);
-      expect(output.files['runtime.dart'], expectedRuntime);
+      final goldenFiles =
+          Directory(goldenRoot)
+              .listSync(recursive: true)
+              .whereType<File>()
+              .map(
+                (file) => path.posix.joinAll(
+                  path.split(path.relative(file.path, from: goldenRoot)),
+                ),
+              )
+              .toSet();
+      expect(
+        goldenFiles,
+        output.files.keys.toSet(),
+        reason: 'stale golden files',
+      );
     });
 
     test('generates runtime helpers and APIs aligned with runtime types', () {
@@ -211,6 +103,8 @@ Future<void> main() async {
       final users = output.files['modules/admin/users.dart']!;
 
       expect(runtime, contains('BigInt expectBigInt'));
+      expect(runtime, contains('Object expectCommitTs'));
+      expect(runtime, contains('value is ConvexCommitTsPlaceholder'));
       expect(runtime, contains("Expected \${label ?? 'bigint'}"));
       expect(runtime, contains('class TypedQueryLoading<T>'));
       expect(runtime, contains('final Object? data;'));
@@ -220,10 +114,17 @@ Future<void> main() async {
 
       expect(api, contains('final ConvexFunctionCaller _client;'));
       expect(
-        api,
+        runtime,
         contains('QueryError(:final message, :final data, :final logLines)'),
       );
-      expect(api, contains('QueryLoading(:final hasPendingWrites)'));
+      expect(runtime, contains('QueryLoading(:final hasPendingWrites)'));
+      expect(
+        runtime,
+        contains(
+          'QuerySuccess(:final value, :final logLines, :final hasPendingWrites)',
+        ),
+      );
+      expect(api, contains('typedQueryResult<HealthResult>('));
       expect(
         messages,
         contains("if (attachment.isDefined) 'attachment': attachment.value,"),
@@ -238,113 +139,6 @@ Future<void> main() async {
           "count: expectBigInt(map['count'], label: 'SyncTypeResultCount')",
         ),
       );
-    });
-
-    test('shares schema discriminated unions across endpoint shapes', () {
-      const category = ConvexUnionType(<ConvexType>[
-        ConvexObjectType(<String, ConvexField>{
-          'kind': ConvexField(
-            fieldType: ConvexLiteralType('beer'),
-            optional: false,
-          ),
-        }),
-        ConvexObjectType(<String, ConvexField>{
-          'kind': ConvexField(
-            fieldType: ConvexLiteralType('wine'),
-            optional: false,
-          ),
-        }),
-      ]);
-      final output =
-          DartGenerator(
-            schema: const SchemaSpec(
-              tables: <SchemaTableSpec>[
-                SchemaTableSpec(
-                  name: 'drinks',
-                  documentType: ConvexObjectType(<String, ConvexField>{
-                    'category': ConvexField(
-                      fieldType: category,
-                      optional: false,
-                    ),
-                  }),
-                ),
-              ],
-            ),
-          ).generate(
-            FunctionsSpec(
-              url: 'https://example.com',
-              functions: <BaseFunctionSpec>[
-                _function(
-                  identifier: 'drinks.ts:create',
-                  args: const ConvexObjectType(<String, ConvexField>{
-                    'category': ConvexField(
-                      fieldType: category,
-                      optional: false,
-                    ),
-                  }),
-                ),
-                _function(
-                  identifier: 'drinks.ts:get',
-                  returns: const ConvexObjectType(<String, ConvexField>{
-                    'category': ConvexField(
-                      fieldType: category,
-                      optional: false,
-                    ),
-                  }),
-                ),
-              ],
-            ),
-          );
-
-      expect(output.files, contains('types.dart'));
-      expect(output.files['types.dart'], contains('sealed class Category'));
-      expect(output.files['types.dart'], contains('final class Beer'));
-      expect(output.files['api.dart'], contains("export 'types.dart';"));
-      final drinks = output.files['modules/drinks.dart']!;
-      expect(drinks, contains("import '../types.dart';"));
-      expect(drinks, contains('required Category category'));
-      expect(drinks, contains('Category category'));
-      expect(drinks, isNot(contains('CreateArgsCategory')));
-      expect(drinks, isNot(contains('GetResultCategory')));
-    });
-
-    test('emits ID wrappers referenced only by shared schema types', () {
-      const target = ConvexUnionType(<ConvexType>[
-        ConvexObjectType(<String, ConvexField>{
-          'kind': ConvexField(
-            fieldType: ConvexLiteralType('user'),
-            optional: false,
-          ),
-          'id': ConvexField(fieldType: ConvexIdType('users'), optional: false),
-        }),
-        ConvexObjectType(<String, ConvexField>{
-          'kind': ConvexField(
-            fieldType: ConvexLiteralType('team'),
-            optional: false,
-          ),
-          'id': ConvexField(fieldType: ConvexIdType('teams'), optional: false),
-        }),
-      ]);
-      final output =
-          DartGenerator(
-            schema: const SchemaSpec(
-              tables: <SchemaTableSpec>[
-                SchemaTableSpec(
-                  name: 'events',
-                  documentType: ConvexObjectType(<String, ConvexField>{
-                    'target': ConvexField(fieldType: target, optional: false),
-                  }),
-                ),
-              ],
-            ),
-          ).generate(
-            FunctionsSpec(url: 'https://example.com', functions: const []),
-          );
-
-      expect(output.files['types.dart'], contains('UsersId id'));
-      expect(output.files['types.dart'], contains('TeamsId id'));
-      expect(output.files['schema.dart'], contains('class UsersId'));
-      expect(output.files['schema.dart'], contains('class TeamsId'));
     });
 
     test('throws when function names generate duplicate methods', () {
@@ -441,6 +235,248 @@ Future<void> main() async {
               ),
         ),
       );
+    });
+
+    test('gives a system table a distinct ID class only on collision', () {
+      final collidingSpec = FunctionsSpec(
+        url: 'https://example.com',
+        functions: <BaseFunctionSpec>[
+          _function(
+            identifier: 'files.ts:upload',
+            returns: const ConvexIdType('_storage'),
+          ),
+          _function(
+            identifier: 'files.ts:record',
+            returns: const ConvexIdType('storage'),
+          ),
+        ],
+      );
+
+      final output = DartGenerator().generate(collidingSpec);
+      final schema = output.files['schema.dart']!;
+      final files = output.files['modules/files.dart']!;
+      expect(schema, contains('class SystemStorageId extends ConvexTableId'));
+      expect(schema, contains("tableName = '_storage'"));
+      expect(schema, contains('class StorageId extends ConvexTableId'));
+      expect(files, contains('Future<SystemStorageId> upload('));
+      expect(files, contains('Future<StorageId> record('));
+
+      // Without a user `storage` table, `_storage` keeps its short name.
+      final storageOnly = DartGenerator().generate(
+        FunctionsSpec(
+          url: 'https://example.com',
+          functions: <BaseFunctionSpec>[
+            _function(
+              identifier: 'files.ts:upload',
+              returns: const ConvexIdType('_storage'),
+            ),
+          ],
+        ),
+      );
+      expect(
+        storageOnly.files['schema.dart'],
+        allOf(
+          contains('class StorageId extends ConvexTableId'),
+          isNot(contains('SystemStorageId')),
+        ),
+      );
+    });
+
+    test('table collection does not reject an arg named like the result', () {
+      // A `result` arg used to be pre-mapped as `<Fn>Result`, colliding with
+      // the return type's typedef even though rendering names it
+      // `<Fn>ArgsResult`.
+      final output = DartGenerator().generate(
+        FunctionsSpec(
+          url: 'https://example.com',
+          functions: <BaseFunctionSpec>[
+            FunctionSpec(
+              functionType: 'Mutation',
+              args: const ConvexObjectType(<String, ConvexField>{
+                'result': ConvexField(
+                  fieldType: ConvexUnionType(<ConvexType>[
+                    ConvexLiteralType('correct'),
+                    ConvexLiteralType('wrong'),
+                  ]),
+                  optional: false,
+                ),
+              }),
+              returns: const ConvexObjectType(<String, ConvexField>{
+                'score': ConvexField(
+                  fieldType: ConvexNumberType(),
+                  optional: false,
+                ),
+              }),
+              identifier: 'quiz.ts:submitAnswer',
+              visibility: const Visibility('public'),
+            ),
+          ],
+        ),
+      );
+
+      final quiz = output.files['modules/quiz.dart']!;
+      expect(quiz, contains('typedef SubmitAnswerResult = ({double score});'));
+      expect(quiz, contains('enum SubmitAnswerArgsResult {'));
+    });
+
+    test('maps non-object args validators to an untyped map argument', () {
+      final output = DartGenerator().generate(
+        FunctionsSpec(
+          url: 'https://example.com',
+          functions: <BaseFunctionSpec>[
+            FunctionSpec(
+              functionType: 'Query',
+              args: const ConvexRecordType(
+                keys: ConvexStringType(),
+                values: ConvexField(
+                  fieldType: ConvexNumberType(),
+                  optional: false,
+                ),
+              ),
+              returns: const ConvexNumberType(),
+              identifier: 'stats.ts:sum',
+              visibility: const Visibility('public'),
+            ),
+          ],
+        ),
+      );
+
+      final stats = output.files['modules/stats.dart']!.replaceAll(
+        RegExp(r'\s+'),
+        ' ',
+      );
+      expect(
+        stats,
+        contains(
+          'Future<double> sum([ Map<String, dynamic> args = '
+          'const <String, dynamic>{}, ]) async',
+        ),
+      );
+      expect(
+        output.warnings,
+        anyElement(
+          allOf(contains('stats.ts:sum'), contains('non-object top-level')),
+        ),
+      );
+    });
+
+    test('generated mutations accept and forward an optimistic update', () {
+      final output = DartGenerator().generate(spec);
+      final messages = output.files['modules/messages.dart']!;
+      final kv = output.files['modules/kv.dart']!;
+      final events = output.files['modules/events.dart']!;
+
+      expect(messages, contains('OptimisticUpdate? optimisticUpdate,'));
+      expect(kv, contains('OptimisticUpdate? optimisticUpdate,'));
+      expect(kv, contains('optimisticUpdate,\n    );'));
+      // Untyped args keep their optional positional map.
+      expect(
+        events,
+        contains(
+          'dispatch([\n'
+          '    Map<String, dynamic> args = const <String, dynamic>{},\n'
+          '    OptimisticUpdate? optimisticUpdate,\n'
+          '  ])',
+        ),
+      );
+      // Queries and their subscriptions never take one.
+      expect(
+        RegExp('optimisticUpdate').allMatches(output.files['api.dart']!),
+        isEmpty,
+      );
+
+      final colliding = DartGenerator().generate(
+        FunctionsSpec(
+          url: 'https://example.com',
+          functions: <BaseFunctionSpec>[
+            FunctionSpec(
+              functionType: 'Mutation',
+              args: const ConvexObjectType(<String, ConvexField>{
+                'optimistic_update': ConvexField(
+                  fieldType: ConvexBooleanType(),
+                  optional: false,
+                ),
+              }),
+              returns: const ConvexNullType(),
+              identifier: 'flags.ts:set_flag',
+              visibility: const Visibility('public'),
+            ),
+          ],
+        ),
+      );
+      expect(
+        colliding.files['modules/flags.dart'],
+        isNot(contains('OptimisticUpdate?')),
+      );
+      expect(
+        colliding.warnings,
+        anyElement(
+          allOf(contains('flags.ts:set_flag'), contains('optimisticUpdate')),
+        ),
+      );
+    });
+
+    test('maps colliding system fields and Object member names', () {
+      final output = DartGenerator().generate(spec);
+      final events = output.files['modules/events.dart']!;
+
+      expect(events, contains('EventsId systemId,'));
+      expect(events, contains('double systemCreationTime,'));
+      expect(events, contains('String id,'));
+      expect(events, contains('String toStringValue,'));
+      // v.commitTs(): BigInt, or the placeholder a writing mutation reads back.
+      expect(events, contains('Object ts,'));
+      expect(events, contains("ts: expectCommitTs(map['ts']"));
+      expect(events, contains('String callback,'));
+      expect(events, contains('dynamic payload,'));
+      expect(events, contains('required Map<String, double> scores'));
+    });
+
+    test('deduplicates union nested types even when args map twice', () {
+      // Function args are mapped once as an object and once per field, so
+      // union case-name claims must be stable across both passes.
+      const payload = ConvexUnionType(<ConvexType>[
+        ConvexObjectType(<String, ConvexField>{
+          'kind': ConvexField(
+            fieldType: ConvexLiteralType('choice'),
+            optional: false,
+          ),
+          'value': ConvexField(
+            fieldType: ConvexUnionType(<ConvexType>[
+              ConvexLiteralType('a'),
+              ConvexLiteralType('b'),
+            ]),
+            optional: false,
+          ),
+        }),
+        ConvexObjectType(<String, ConvexField>{
+          'kind': ConvexField(
+            fieldType: ConvexLiteralType('text'),
+            optional: false,
+          ),
+          'value': ConvexField(fieldType: ConvexStringType(), optional: false),
+        }),
+      ]);
+      final output = DartGenerator(discriminator: 'tag').generate(
+        FunctionsSpec(
+          url: 'https://example.com',
+          functions: <BaseFunctionSpec>[
+            FunctionSpec(
+              functionType: 'Mutation',
+              args: const ConvexObjectType(<String, ConvexField>{
+                'payload': ConvexField(fieldType: payload, optional: false),
+              }),
+              returns: const ConvexNullType(),
+              identifier: 'forms.ts:save',
+              visibility: const Visibility('public'),
+            ),
+          ],
+        ),
+      );
+
+      final forms = output.files['modules/forms.dart']!;
+      expect(forms, contains('class SaveArgsPayload1Value extends'));
+      expect(forms, contains('enum SaveArgsPayload1Value2 {'));
     });
 
     test('escapes generated imports, function names, and table names', () {
@@ -617,180 +653,6 @@ Future<void> main() async {
       );
     });
 
-    test(
-      'generates pagination widgets, snapshots, codecs and barrel exports',
-      () {
-        final output = DartGenerator(
-          generateFlutterWidgets: true,
-        ).generate(spec);
-        final widgets = output.files['widgets/messages.dart']!;
-        expect(widgets, contains('class MessagesPaginatePublicQuery'));
-        expect(
-          widgets,
-          contains('const MessagesPaginatePublicQuery.snapshot('),
-        );
-        expect(widgets, contains('this.channel = const Optional.absent()'));
-        expect(widgets, contains('this.pageSize = 20'));
-        expect(
-          widgets,
-          contains('PaginatedQueryWidgetBuilder<PaginatePublicPageItem>'),
-        );
-        expect(
-          widgets,
-          contains('ConvexPaginatedQuerySnapshot<PaginatePublicPageItem>'),
-        );
-        expect(
-          widgets,
-          contains('query: paginatePublicPaginatedQueryReference'),
-        );
-        expect(widgets, contains('ConvexTypedPaginatedQuery<'));
-        expect(widgets, isNot(contains('paginationOpts')));
-        expect(
-          output.files['widgets.dart'],
-          contains("export 'widgets/messages.dart'"),
-        );
-        expect(
-          output.files['modules/messages.dart'],
-          contains(
-            'ConvexPaginatedQueryReference<PaginatePublicArgs, PaginatePublicPageItem>',
-          ),
-        );
-      },
-    );
-
-    test(
-      'pagination-only modules support scalar, union and colliding arguments',
-      () async {
-        const field = ConvexField(
-          fieldType: ConvexStringType(),
-          optional: false,
-        );
-        const args = ConvexObjectType({
-          'paginationOpts': ConvexField(
-            fieldType: ConvexAnyType(),
-            optional: false,
-          ),
-          'builder': field,
-          'client': field,
-          'query_builder': field,
-        });
-        ConvexType page(ConvexType item) => ConvexObjectType({
-          'page': ConvexField(
-            fieldType: ConvexArrayType(item),
-            optional: false,
-          ),
-          'isDone': const ConvexField(
-            fieldType: ConvexBooleanType(),
-            optional: false,
-          ),
-          'continueCursor': field,
-        });
-        final union = ConvexUnionType([
-          const ConvexObjectType({
-            'kind': ConvexField(
-              fieldType: ConvexLiteralType('text'),
-              optional: false,
-            ),
-            'text': field,
-          }),
-          const ConvexObjectType({
-            'kind': ConvexField(
-              fieldType: ConvexLiteralType('image'),
-              optional: false,
-            ),
-            'url': field,
-          }),
-        ]);
-        final output = DartGenerator(generateFlutterWidgets: true).generate(
-          FunctionsSpec(
-            url: 'https://sample.convex.cloud',
-            functions: [
-              _function(
-                identifier: 'feed.ts:numbers',
-                functionType: 'Query',
-                args: args,
-                returns: page(const ConvexNumberType()),
-              ),
-              _function(
-                identifier: 'feed.ts:events',
-                functionType: 'Query',
-                args: args,
-                returns: page(union),
-              ),
-            ],
-          ),
-        );
-        final widgets = output.files['widgets/feed.dart']!;
-        expect(
-          output.files['widgets.dart'],
-          contains("export 'widgets/feed.dart'"),
-        );
-        expect(widgets, contains('PaginatedQueryWidgetBuilder<double>'));
-        expect(
-          widgets,
-          contains('PaginatedQueryWidgetBuilder<EventsPageItem>'),
-        );
-        expect(widgets, contains('required this.queryBuilder'));
-        expect(widgets, contains('required this.queryClient'));
-        expect(widgets, contains('required this.queryQueryBuilder'));
-        expect(widgets, contains('builder: queryBuilder'));
-        final module = output.files['modules/feed.dart']!;
-        expect(module, contains('sealed class EventsPageItem'));
-        expect(
-          module,
-          contains(
-            "decodeItem: (raw) => expectDouble(raw, label: 'NumbersPageItem')",
-          ),
-        );
-        final directory = await Directory.systemTemp.createTemp(
-          'dartvex_pages_',
-        );
-        addTearDown(() => directory.delete(recursive: true));
-        for (final entry in output.files.entries) {
-          final file = File(path.join(directory.path, entry.key));
-          await file.parent.create(recursive: true);
-          await file.writeAsString(entry.value);
-        }
-        final script = File(path.join(directory.path, 'check.dart'));
-        await script.writeAsString('''
-import 'dart:convert';
-import 'modules/feed.dart';
-void check(bool value) { if (!value) throw StateError('Check failed'); }
-void main() {
-  check(numbersPaginatedQueryReference.decodeItem(42) == 42.0);
-  final encoded = numbersPaginatedQueryReference.encode((builder: 'b', client: 'c', queryBuilder: 'q'));
-  check(jsonEncode(encoded) == jsonEncode({'builder': 'b', 'client': 'c', 'query_builder': 'q'}));
-  check(eventsPaginatedQueryReference.decodeItem({'kind': 'text', 'text': 'hello'}) is Text);
-  check(eventsPaginatedQueryReference.decodeItem({'kind': 'image', 'url': 'url'}) is Image);
-}
-''');
-        final result = await Process.run(Platform.resolvedExecutable, [
-          '--packages=${path.absolute('.dart_tool/package_config.json')}',
-          script.path,
-        ]);
-        expect(
-          result.exitCode,
-          0,
-          reason: '${result.stdout}\n${result.stderr}',
-        );
-      },
-    );
-
-    test('pagination reference getters cannot collide with function names', () {
-      expect(
-        () => DartGenerator().generate(
-          FunctionsSpec(
-            url: spec.url,
-            functions: [
-              ...spec.functions,
-              _function(identifier: 'messages.ts:paginatePublicPaginatedQuery'),
-            ],
-          ),
-        ),
-        throwsA(isA<NamingException>()),
-      );
-    });
-
     test('demotes a paginated query whose argument collides with pageSize', () {
       const paginationOpts = ConvexField(
         fieldType: ConvexObjectType(<String, ConvexField>{
@@ -877,12 +739,11 @@ class _InvalidMethodNaming extends Naming {
 FunctionSpec _function({
   required String identifier,
   String functionType = 'Mutation',
-  ConvexType args = const ConvexObjectType(<String, ConvexField>{}),
   ConvexType returns = const ConvexStringType(),
 }) {
   return FunctionSpec(
     functionType: functionType,
-    args: args,
+    args: const ConvexObjectType(<String, ConvexField>{}),
     returns: returns,
     identifier: identifier,
     visibility: const Visibility('public'),

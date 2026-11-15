@@ -1,4 +1,4 @@
-/// Arguments for a Convex mutation that takes no fields.
+/// Arguments for a Convex function that takes no fields.
 final class NoArgs {
   /// Creates an empty argument value.
   const NoArgs();

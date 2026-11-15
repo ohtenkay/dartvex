@@ -12,17 +12,17 @@ export 'package:dartvex/dartvex.dart'
         ConvexMutationReference,
         ConvexQueryReference,
         ConvexPaginatedQueryReference,
-        ConvexStorageException,
         NoArgs,
+        TypedOptimisticLocalStore,
+        TypedOptimisticQueryEntry,
+        TypedOptimisticUpdate,
+        OptimisticMutationContext,
+        bindTypedOptimisticUpdate,
+        ConvexStorageException,
         OptimisticLocalStore,
         OptimisticQueryEntry,
         OptimisticUpdate,
         OptimisticUpdateHandle,
-        OptimisticMutationContext,
-        TypedOptimisticLocalStore,
-        TypedOptimisticQueryEntry,
-        TypedOptimisticUpdate,
-        bindTypedOptimisticUpdate,
         defaultHttpClientFactory,
         defaultWebSocketAdapterOverride;
 
@@ -34,15 +34,25 @@ export 'src/plugin.dart' show DartvexFlutterPlugin;
 export 'src/transport/cupertino_web_socket_adapter_stub.dart'
     if (dart.library.io) 'src/transport/cupertino_web_socket_adapter.dart'
     show installCupertinoTransport;
-export 'src/asset_cache.dart' show ConvexAssetCache, ConvexAssetCacheMetrics;
-export 'src/convex_cached_image.dart' show ConvexCachedImage;
-export 'src/convex_image.dart' show ConvexImage;
-export 'src/file_downloader.dart'
+export 'src/media_types.dart'
     show
-        ConvexFileDownloader,
+        ConvexAssetCacheMetrics,
         ConvexDownloadProgress,
-        ConvexDownloadProgressCallback;
-export 'src/offline_image.dart' show ConvexAssetSnapshot, ConvexOfflineImage;
+        ConvexDownloadProgressCallback,
+        ConvexImageErrorBuilder;
+// Native-only media helpers (dart:io, flutter_cache_manager). Web builds (JS
+// and WASM) get API-compatible stand-ins, so the web import graph stays free
+// of dart:io. The native file is the default so static analysis (and IDEs)
+// always see the real types.
+export 'src/native_only_io.dart'
+    if (dart.library.js_interop) 'src/native_only_stub.dart'
+    show
+        ConvexAssetCache,
+        ConvexAssetSnapshot,
+        ConvexCachedImage,
+        ConvexFileDownloader,
+        ConvexImage,
+        ConvexOfflineImage;
 export 'src/auth_builder.dart' show ConvexAuthBuilder, ConvexAuthWidgetBuilder;
 export 'src/auth_provider.dart' show ConvexAuthProvider;
 export 'src/auth_refreshing_builder.dart'
@@ -63,23 +73,24 @@ export 'src/mutation_builder.dart'
         MutationMode,
         MutationSupersededException,
         MutationCancelledException;
-export 'src/paginated_query_group.dart'
-    show ConvexPaginatedQueryGroup, ConvexPaginatedQueryGroupSnapshot;
 export 'src/paginated_query_builder.dart'
     show
         PaginatedQueryBuilder,
-        PaginatedQueryWidgetBuilder,
-        PaginationStatus,
         ConvexPaginatedQuerySnapshot,
-        ConvexTypedPaginatedQuery;
+        ConvexTypedPaginatedQuery,
+        PaginatedQueryErrorWidgetBuilder,
+        PaginatedQueryWidgetBuilder,
+        PaginationStatus;
 export 'src/provider.dart' show ConvexProvider;
 export 'src/query_builder.dart' show ConvexQuery, ConvexQueryWidgetBuilder;
-export 'src/typed_query_builder.dart' show ConvexTypedQuery;
 export 'src/runtime_client.dart'
     show
         ConvexClientRuntime,
         ConvexConnectionState,
+        ConvexFunctionCallerSource,
         ConvexRuntimeClient,
+        ConvexRuntimeIdentitySource,
+        ConvexRuntimeFunctionCaller,
         ConvexRuntimePaginatedQuery,
         ConvexRuntimeQueryError,
         ConvexRuntimeQueryEvent,
@@ -88,10 +99,20 @@ export 'src/runtime_client.dart'
         ConvexRuntimeSubscription;
 export 'src/snapshot.dart'
     show
+        ConvexDecodeException,
         ConvexDecoder,
         ConvexQuerySnapshot,
         ConvexQuerySource,
         ConvexRequestExecutor,
         ConvexRequestSnapshot;
 export 'src/testing/fake_convex_client.dart'
-    show FakeConvexClient, FakeConvexPaginatedQuery, FakeConvexSubscription;
+    show
+        FakeConvexCall,
+        FakeConvexClient,
+        FakeConvexPaginatedQuery,
+        FakeConvexSubscription;
+
+export 'src/typed_query_builder.dart' show ConvexTypedQuery;
+
+export 'src/paginated_query_group.dart'
+    show ConvexPaginatedQueryGroup, ConvexPaginatedQueryGroupSnapshot;

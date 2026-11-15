@@ -6,23 +6,7 @@
 
 # dartvex_codegen
 
-CLI code generator for [Convex](https://convex.dev) backends. Generates type-safe Dart bindings from your Convex schema and function spec — companion tool to [`dartvex`](https://pub.dev/packages/dartvex).
-
-## Fork additions
-
-This package is part of [ohtenkay/dartvex](https://github.com/ohtenkay/dartvex),
-a fork of [AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
-
-Adds schema-derived sealed unions and opt-in generated Flutter query/mutation
-widgets, typed references, and mutation executors. See
-[schema unions](#schema-derived-discriminated-unions-fork-addition),
-[Flutter generation](#generated-flutter-widgets-fork-addition), and the
-[Unreleased changelog](CHANGELOG.md#unreleased).
-
-The pub.dev installation examples below refer to upstream releases. Use this
-checkout or Git dependencies pinned to a fork commit for fork additions, keeping
-related Dartvex packages on the same revision. See the
-[root fork overview](../../README.md#fork-additions).
+CLI code generator for [Convex](https://convex.dev) backends. Generates type-safe Dart bindings from your Convex function spec (the `args` and `returns` validators of your public functions) — companion tool to [`dartvex`](https://pub.dev/packages/dartvex).
 
 <p align="center">
   <a href="https://github.com/AndreFrelicot/dartvex">
@@ -36,29 +20,30 @@ related Dartvex packages on the same revision. See the
 |---------|-------------|
 | [`dartvex`](https://pub.dev/packages/dartvex) | Core client — WebSocket sync, subscriptions, auth |
 | [`dartvex_flutter`](https://pub.dev/packages/dartvex_flutter) | Flutter widgets — Provider, Query, Mutation |
-| **[`dartvex_codegen`](https://pub.dev/packages/dartvex_codegen)** | CLI code generator — type-safe Dart bindings from schema |
+| **[`dartvex_codegen`](https://pub.dev/packages/dartvex_codegen)** | CLI code generator — type-safe Dart bindings from function validators |
 | [`dartvex_local`](https://pub.dev/packages/dartvex_local) | Offline support — SQLite cache, mutation queue |
 | [`dartvex_auth_better`](https://pub.dev/packages/dartvex_auth_better) | Better Auth adapter |
 
-Fork source and docs: [github.com/ohtenkay/dartvex](https://github.com/ohtenkay/dartvex).
-Upstream: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
+Source and full docs: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex)
 
 ## Installation
 
 ```yaml
 dev_dependencies:
-  dartvex_codegen: ^0.2.0
+  dartvex_codegen: ^0.3.0
 ```
 
 Requires Dart `^3.7.0`.
 
-The generated bindings call APIs introduced in `dartvex` 0.2.0 (such as
-`ConvexFunctionCaller.paginatedQuery` and `QueryLoading`), so the application
-consuming the generated code needs:
+The generated bindings call `dartvex` APIs such as
+`ConvexFunctionCaller.paginatedQuery` and `QueryLoading` (0.2.0), and
+generated mutations forward an optional optimistic update to
+`ConvexFunctionCaller.mutate` (0.3.0), so use the `dartvex` release that
+matches this generator. The application consuming the generated code needs:
 
 ```yaml
 dependencies:
-  dartvex: ^0.2.0
+  dartvex: ^0.3.0
 ```
 
 ## Usage
@@ -71,6 +56,11 @@ dart run dartvex_codegen generate \
   --output /path/to/dart_app/lib/convex_api
 ```
 
+`--project` runs `convex function-spec` in that directory, which lists the
+functions **deployed** to the project's configured (dev) deployment, not the
+local TypeScript sources. Push your changes first (keep `npx convex dev`
+running) so the bindings match your code.
+
 Generate from a previously exported spec file:
 
 ```bash
@@ -82,74 +72,33 @@ dart run dartvex_codegen generate \
 Useful flags:
 
 - `--client-import package:dartvex/dartvex.dart`
-- `--flutter-widgets` **(fork addition)** generates `widgets.dart` with a typed widget for every public mutation and query, including standard paginated queries. Add `dartvex_flutter` and Flutter to the consuming app.
-- `--discriminator kind` **(fork addition)**
-- `--dry-run`
-- `--verbose`
+- `--dry-run` (generated files go to stdout; warnings go to stderr)
+- `--verbose` (show the Convex CLI output)
 - `--watch`
 
-### Generated Flutter widgets (fork addition)
+Run `dart run dartvex_codegen --help` to list the commands (`generate`,
+`scrub`) and `dart run dartvex_codegen generate --help` for every option.
 
-The Flutter output is opt-in and separate from `api.dart`. For example,
-`DrinkCreateMutation` wraps `ConvexMutation` and passes a typed callable to
-its builder. Call it with named arguments such as
-`create(name: name, alcoholPercentage: percentage, drinkCategory: category)`;
-the generated wrapper constructs and encodes the argument record. Its
-`run(...)` method returns void and reports mutation errors through the snapshot;
-pass `onSuccess` for a result callback, or await the callable for explicit error
-handling. See [executor usage](../dartvex_flutter/README.md#generated-mutation-executors-fork-addition).
-Generated mutation widgets also accept a typed `optimisticUpdate` callback
-that can read and update generated query references without raw maps.
-`DrinkListCustomQuery` wraps `ConvexTypedQuery` and gives its builder typed
-data, with default loading and error UI. Use `waitingBuilder` or `errorBuilder`
-to replace those states, or the `.snapshot` constructor to handle every state
-and its metadata. Query widgets accept named arguments and manage their
-subscriptions automatically.
+### Watch mode
 
-Standard paginated queries generate the same `<Module><Function>Query` widget
-name, backed by `ConvexTypedPaginatedQuery`. Detection uses the existing
-`paginationOpts` argument and `page` / `isDone` / `continueCursor` result contract;
-queries without a return validator retain the map-item fallback. The generated
-widget accepts typed filter arguments and `pageSize` (default 20), and manages
-cursors internally:
+`--watch` regenerates whenever its input changes:
 
-```dart
-MessagesPaginatePublicQuery(
-  channel: const Optional.of('general'),
-  pageSize: 20,
-  builder: (context, items, loadMore, status) => ListView.builder(
-    itemCount: items.length + (status == PaginationStatus.allLoaded ? 0 : 1),
-    itemBuilder: (context, index) {
-      if (index < items.length) return Text(items[index].text);
-      if (status == PaginationStatus.error) {
-        return const Text('Could not load more messages.');
-      }
-      return TextButton(
-        onPressed: status == PaginationStatus.idle ? loadMore : null,
-        child: const Text('Load more'),
-      );
-    },
-  ),
-)
-```
+- With `--spec-file`, it reacts to rewrites of that file, including atomic
+  replaces (`git pull`, editor safe-writes, `mv`). An empty file (a shell
+  redirect that has not been written yet) is skipped silently.
+- With `--project`, it watches the project directory recursively (including
+  on Linux, where each directory is watched individually; `node_modules`,
+  `.git`, `.dart_tool`, and the output directory are skipped). Because the
+  spec comes from the deployment, it re-reads it 2, 5, and 10 seconds after
+  each change so a `convex dev` push that finishes after the first
+  regeneration is still picked up; unchanged specs are not rewritten. If a
+  push takes longer, save again or rerun `generate`.
 
-The default constructor handles initial loading and errors with optional
-`waitingBuilder` / `errorBuilder` overrides. Later-page errors preserve loaded
-items and reach the builder with `PaginationStatus.error`. Use `.snapshot` with
-`snapshotBuilder: (context, snapshot, loadMore) => ...` for every state and the
-original error. `ConvexPaginatedQuerySnapshot<T>` exposes `items`, `status`,
-`isDone`, and `error`. Filter, page-size, or client changes reset pagination;
-ordinary rebuilds retain loaded pages. The application controls scroll detection
-or a load-more button. This adds no retry semantics: `loadMore` remains a no-op
-while loading, exhausted, or errored, as in the existing engine.
+Failed regenerations are reported on stderr and watching continues. If the
+watch itself fails (for example, the watched directory is removed), the
+command exits with a non-zero code.
 
-The generator also exposes `<function>PaginatedQueryReference` metadata and an
-API `<function>PaginatedQuery` getter with a `ConvexPaginatedQueryReference`
-containing typed argument encoding and item decoding. Existing typed pagination
-methods remain available. Use matching core, Flutter, and codegen fork revisions.
-Custom cursor/result contracts continue to generate ordinary query widgets.
-
-### Exported spec hygiene
+### Scrubbing an exported spec
 
 Before committing an exported spec file, scrub the real deployment URL it
 bakes in:
@@ -161,7 +110,9 @@ npx convex function-spec | dart run dartvex_codegen scrub > function_spec.json
 `scrub` reads from stdin (or `--spec-file`) and writes the spec with the
 top-level `url` replaced by `https://your-deployment.convex.cloud`
 (customizable via `--placeholder-url`). The transform is idempotent and
-preserves key order, so committed diffs stay minimal.
+preserves key order, so committed diffs stay minimal. Like `--project`,
+`scrub` and `generate --spec-file` skip banner lines that package runners
+such as yarn v1 print around the JSON.
 
 ## Generated API
 
@@ -170,92 +121,7 @@ The generator produces:
 - `api.dart` as the main entrypoint
 - `runtime.dart` with shared helper types like `Optional<T>`
 - `schema.dart` with typed table IDs
-- `types.dart` **(fork addition)** with shared table documents and schema-derived discriminated unions, when present
 - `modules/...` with typed wrappers around Convex queries, mutations, and actions
-
-### Schema-derived discriminated unions (fork addition)
-
-Project generation automatically loads `convex/schema.ts` (or `schema.js`).
-Every table document generates a shared `<TableName>Document` type, including
-its typed `_id` and `_creationTime` fields (named `id` and `creationTime` in Dart).
-Ordinary documents become record typedefs. Table-root object unions with a
-required string-literal `kind` become sealed document types:
-
-```dart
-sealed class SessionDocument {
-  const SessionDocument();
-
-  SessionId get id;
-  String get name;
-}
-final class Session extends SessionDocument { /* ... */ }
-final class Party extends SessionDocument { /* ... */ }
-```
-
-Queries returning the same complete document reuse that type in direct,
-nullable, list, and nested results, regardless of the containing field name.
-Matching uses the complete schema shape, so projections and enriched responses
-keep endpoint-specific result types. Regenerating existing project bindings
-renames complete-document result types to `<TableName>Document`; update callers
-to import those types from `types.dart` or the root `api.dart`.
-
-Every discriminated union base exposes abstract getters for fields present in
-all variants with identical validator types and optionality. Common enums and
-nested objects also share their generated Dart types. Fields with different
-validators, missing fields, and fields with differing optionality stay on the
-concrete variants. The discriminator remains a wire-only field.
-
-Use Dart's `value is Party` check to promote a value before accessing
-party-specific fields.
-
-Nested schema object unions are also shared. Their field name supplies the base
-name, and they keep their existing naming convention without a `Document`
-suffix. The discriminator can be changed globally with `--discriminator`.
-
-```ts
-category: v.union(
-  v.object({ kind: v.literal("beer") }),
-  v.object({
-    kind: v.literal("cocktail"),
-    ingredients: v.array(v.string()),
-  }),
-)
-```
-
-The schema field name becomes the shared sealed base name. The discriminator
-values become unprefixed subclasses, and `kind` remains a wire-only field:
-
-```dart
-sealed class Category {
-  const Category();
-}
-
-final class Beer extends Category {
-  const Beer();
-}
-
-final class Cocktail extends Category {
-  const Cocktail({required this.ingredients});
-
-  final List<String> ingredients;
-}
-```
-
-Dartvex recursively discovers unions at any object or array nesting depth.
-Identical union structures reuse one Dart type across schema fields, even when
-their names differ (for example, `slotA` and `slotB`). The first field encountered
-in schema traversal supplies the shared base name; both fields use that type.
-Union member and object field ordering do not affect structural matching.
-Endpoint fields with a different name also reuse a uniquely matching schema
-union. Different structures using the same field name fail generation.
-Subclass names are global within `types.dart`, so incompatible unions whose
-discriminator values normalize to the same Dart name still fail clearly.
-
-Project generation requires the backend's installed `esbuild` and Convex
-dependencies. Generation from only `--spec-file` has no local schema and
-therefore retains endpoint-local types. See the
-[Unreleased changelog](CHANGELOG.md#unreleased) for generator implementation
-and compatibility changes.
 
 Example:
 
@@ -271,10 +137,96 @@ await api.messages.send(author: 'Andre', text: 'Hello');
 final subscription = api.messages.listSubscribe();
 ```
 
-## How It Works
+One-shot calls return the decoded Dart type (`Future<List<ListResultItem>>`,
+`Future<MessagesId>`, ...). `...Subscribe()` methods return a
+`TypedConvexSubscription<T>` (`stream`, `cancel()`), whose stream emits the
+sealed `TypedQueryResult<T>`:
 
-The public Dart API is the CLI entrypoint (`GenerateCommand` /
-`runConvexCodegen`); the stages below are internal:
+```dart
+final subscription = api.messages.listSubscribe();
+subscription.stream.listen((result) {
+  switch (result) {
+    case TypedQuerySuccess(:final value, :final hasPendingWrites):
+      print('${value.length} messages (pending writes: $hasPendingWrites)');
+    case TypedQueryLoading():
+      break; // transient, for example an optimistic clear
+    case TypedQueryError(:final message):
+      print(message);
+  }
+});
+```
+
+A server value the bindings cannot decode (for example an enum value added
+after generation) arrives as a `TypedQueryError` rather than a stream error.
+Paginated queries return a `TypedConvexPaginatedQuery<T>` (`stream`,
+`current`, `items`, `loadMore()`, `cancel()`). Its
+`TypedConvexPaginatedResult<T>` snapshots carry `items`, `status`, `isDone`,
+`error` and `hasPendingWrites` (optimistic writes affect a loaded page), and
+undecodable items are reported as `ConvexPaginationStatus.error`. Optional arguments use
+`Optional<T>` from `runtime.dart`, so an omitted argument and an explicit
+`null` stay distinct.
+
+Generated mutation methods take an optional `optimisticUpdate`, forwarded to
+the client's `mutate`:
+
+```dart
+await api.messages.send(
+  author: 'Andre',
+  text: 'Hello',
+  optimisticUpdate: (store) {
+    // Update cached query results through the OptimisticLocalStore.
+  },
+);
+```
+
+### Type mapping notes
+
+- `v.number()` maps to `double`; `v.int64()` maps to `BigInt`;
+  `v.commitTs()` maps to `Object`, holding a `BigInt` commit timestamp or
+  `ConvexCommitTsPlaceholder.instance` (what a mutation gets when it reads
+  back a field it wrote with `db.vars.commitTs`, as Convex types it
+  `bigint | CommitTsPlaceholder`); `v.id("table")` maps to the generated
+  `<Table>Id` class;
+  `v.function()` handles map to `String`; `v.any()` maps to `dynamic`.
+- Unions of literals become enums. Other unions become a sealed class with
+  one `<Union><n>Value` case per member, as long as Dart can tell the members
+  apart at runtime. Members with the same runtime shape (for example
+  `v.string()` and `v.id("users")`, or objects without a distinct literal
+  discriminator field) make generation fail with an "Ambiguous union" error.
+- Records with string, id, or literal-union keys become `Map<String, V>`.
+- Field names are converted to camelCase. If a system field collides with a
+  user field (`_id` next to `id`), the system field is renamed (`systemId`,
+  `systemCreationTime`). Likewise, a system table whose ID class would
+  collide with a user table's (`_storage` and `storage`) gets a `System`
+  prefix (`SystemStorageId`).
+- Names that are Dart keywords or built-in identifiers (`get`, `set`,
+  `sync`, ...) or `Object` members (`toString`, `hashCode`, ...) get a
+  `Value` suffix for members and a `Type` suffix for type names (`kv:set`
+  generates `setValue()` with `SetTypeArgs`). These names are kept for
+  compatibility with existing bindings.
+- Generated type names come from the function name, not its module path, so
+  two modules that both export `list` each declare a `ListResult`. Use import
+  prefixes if one Dart file needs both.
+
+### Using other clients
+
+The generated API classes wrap a core `ConvexFunctionCaller`, which
+`ConvexClient` and `ConvexClientWithAuth` implement.
+
+- In Flutter, `ConvexProvider.of(context).functionCaller` (dartvex_flutter)
+  returns one for the provider's client: the wrapped `ConvexClient` for
+  `ConvexClientRuntime`, and a stub-backed caller for `FakeConvexClient` in
+  widget tests (its `paginatedQuery` is unsupported).
+- `dartvex_local`'s `ConvexLocalClient` is not a `ConvexFunctionCaller` (its
+  `mutate` returns a `LocalMutationResult`); typed calls made through the
+  underlying `ConvexClient` bypass its cache and offline queue.
+- For anything else, implement `ConvexFunctionCaller` and pass it to
+  `ConvexApi`. `--client-import` lets the generated files import that
+  interface (plus `QueryResult`, `ConvexSubscription`,
+  `ConvexPaginatedQuery`, and `OptimisticUpdate`) from a library of your own
+  that re-exports them.
+
+## How It Works
 
 | Stage | Description |
 |-------|-------------|
@@ -284,12 +236,19 @@ The public Dart API is the CLI entrypoint (`GenerateCommand` /
 | `DartGenerator` | Generates Dart source from function specs |
 | `FileEmitter` | Writes generated files to disk |
 
+The CLI (`dart run dartvex_codegen`, or `runConvexCodegen` /
+`GenerateCommand`) is the supported interface. The library also exports the
+pipeline stages above and their helper types for programmatic use, but
+while the package is pre-1.0 they may change in minor releases.
+
 ## Workflow
 
-1. Keep your Convex backend in TypeScript.
-2. Run `dartvex_codegen generate`.
-3. Import the generated `api.dart` in your Dart or Flutter app.
-4. Call typed wrappers instead of raw function names and raw maps.
+1. Keep your Convex backend in TypeScript, with `args`/`returns` validators.
+2. Push it (`npx convex dev` / `npx convex deploy`).
+3. Run `dartvex_codegen generate`.
+4. Import the generated `api.dart` in your Dart or Flutter app and call typed
+   wrappers instead of raw function names and raw maps. Regenerate after
+   every backend change and after upgrading `dartvex_codegen`.
 
 ## Full Documentation
 

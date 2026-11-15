@@ -144,7 +144,19 @@ class ConvexUpload<T> {
     if (_snapshot.status == ConvexUploadStatus.succeeded) {
       return Future.value(_snapshot.result as T);
     }
-    return _running ??= _execute().whenComplete(() => _running = null);
+    final running = _running;
+    if (running != null) return running;
+    // Publish the future before callbacks can reenter run().
+    final completion = Completer<T>();
+    _running = completion.future;
+    unawaited(_execute().then((value) {
+      _running = null;
+      completion.complete(value);
+    }, onError: (Object error, StackTrace stack) {
+      _running = null;
+      completion.completeError(error, stack);
+    }));
+    return completion.future;
   }
 
   Future<T> _execute() async {
@@ -197,6 +209,7 @@ class ConvexUpload<T> {
           _checkCanceled();
           final decision =
               _retry?.call(error, attempt) ?? ConvexUploadRetry.stop;
+          _checkCanceled();
           if (decision == ConvexUploadRetry.renewCredentials) _request = null;
           if (decision == ConvexUploadRetry.stop || attempt == _maxAttempts) {
             Error.throwWithStackTrace(error, stack);

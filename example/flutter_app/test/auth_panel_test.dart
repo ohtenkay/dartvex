@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:dartvex_flutter/dartvex_flutter.dart';
+// Keep the declared Flutter SDK floor, which predates material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dartvex/dartvex.dart' as convex;
@@ -299,9 +301,11 @@ class _FixedRuntimeClient implements ConvexRuntimeClient {
   }) => throw UnimplementedError();
 
   @override
-  convex.OptimisticUpdateHandle createOptimisticUpdate(
-    convex.OptimisticUpdate update,
-  ) => throw UnimplementedError();
+  OptimisticUpdateHandle createOptimisticUpdate(OptimisticUpdate update) {
+    throw UnsupportedError(
+      'This runtime does not implement optimistic overlays.',
+    );
+  }
 
   @override
   Future<dynamic> mutate(
@@ -384,6 +388,7 @@ class FakeDemoAuthClient implements convex.ConvexAuthClient<DemoUserSession> {
   Future<dynamic> mutate(
     String name, [
     Map<String, dynamic> args = const <String, dynamic>{},
+    convex.OptimisticUpdate? optimisticUpdate,
   ]) async => throw UnimplementedError();
 
   @override

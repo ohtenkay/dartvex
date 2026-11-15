@@ -53,16 +53,17 @@ class UnionMetadataRegistry {
         discriminator: discriminator,
         naming: naming,
       );
-      final literals = objectUnion != null
-          ? objectUnion.members.map((member) => member.literal).toList()
-          : validator.value.map((member) {
-              if (member is! ConvexLiteralType || member.value is! String) {
-                throw FormatException(
-                  'Union metadata requires string literals or a discriminated object union.',
-                );
-              }
-              return member.value! as String;
-            }).toList();
+      final literals =
+          objectUnion != null
+              ? objectUnion.members.map((member) => member.literal).toList()
+              : validator.value.map((member) {
+                if (member is! ConvexLiteralType || member.value is! String) {
+                  throw FormatException(
+                    'Union metadata requires string literals or a discriminated object union.',
+                  );
+                }
+                return member.value! as String;
+              }).toList();
       if (literals.toSet().length != literals.length ||
           literals.length != entry.variants.length ||
           !literals.every(entry.variants.containsKey)) {
@@ -93,11 +94,11 @@ class UnionMetadataRegistry {
         ],
         if (objectUnion != null) ...[
           'copyWith',
-          for (final member in objectUnion.members) ...[
-            member.className,
-            for (final field in member.object.value.keys)
-              naming.fieldName(field),
-          ],
+          for (final member in objectUnion.members) member.className,
+          ...naming.resolveFieldNames({
+            for (final member in objectUnion.members)
+              ...member.object.value.keys,
+          }).values,
         ],
       };
       final properties = <UnionMetadataProperty>[];
@@ -112,31 +113,34 @@ class UnionMetadataRegistry {
           for (final literal in literals)
             literal: entry.variants[literal]![rawName],
         };
-        final types = values.values
-            .where((value) => value != null)
-            .map(
-              (value) => switch (value) {
-                String() => 'String',
-                bool() => 'bool',
-                int() => 'int',
-                double() when value.isFinite => 'double',
-                _ => throw FormatException(
-                  'Metadata "$rawName" must contain finite JSON scalars.',
-                ),
-              },
-            )
-            .toSet();
+        final types =
+            values.values
+                .where((value) => value != null)
+                .map(
+                  (value) => switch (value) {
+                    String() => 'String',
+                    bool() => 'bool',
+                    int() => 'int',
+                    double() when value.isFinite => 'double',
+                    _ =>
+                      throw FormatException(
+                        'Metadata "$rawName" must contain finite JSON scalars.',
+                      ),
+                  },
+                )
+                .toSet();
         if (types.length > 1 &&
             !types.every((type) => type == 'int' || type == 'double')) {
           throw FormatException(
             'Metadata "$rawName" must have a consistent scalar type.',
           );
         }
-        final type = types.isEmpty
-            ? 'Object'
-            : types.length == 1
-            ? types.single
-            : 'num';
+        final type =
+            types.isEmpty
+                ? 'Object'
+                : types.length == 1
+                ? types.single
+                : 'num';
         final nullable = values.values.any((value) => value == null);
         properties.add(
           UnionMetadataProperty(
@@ -144,9 +148,10 @@ class UnionMetadataRegistry {
             annotation: '$type${nullable ? '?' : ''}',
             values: {
               for (final entry in values.entries)
-                entry.key: entry.value is String
-                    ? dartSingleQuotedString(entry.value! as String)
-                    : '${entry.value}',
+                entry.key:
+                    entry.value is String
+                        ? dartSingleQuotedString(entry.value! as String)
+                        : '${entry.value}',
             },
           ),
         );
@@ -168,14 +173,15 @@ class UnionMetadataRegistry {
       _properties[convexTypeIdentity(_nonNullUnion(validator))] ?? const [];
 }
 
-ConvexType _nonNullUnion(ConvexType type) => type is ConvexUnionType
-    ? ConvexUnionType(
-        type.value
-            .where(
-              (member) =>
-                  member is! ConvexNullType &&
-                  !(member is ConvexLiteralType && member.value == null),
-            )
-            .toList(),
-      )
-    : type;
+ConvexType _nonNullUnion(ConvexType type) =>
+    type is ConvexUnionType
+        ? ConvexUnionType(
+          type.value
+              .where(
+                (member) =>
+                    member is! ConvexNullType &&
+                    !(member is ConvexLiteralType && member.value == null),
+              )
+              .toList(),
+        )
+        : type;

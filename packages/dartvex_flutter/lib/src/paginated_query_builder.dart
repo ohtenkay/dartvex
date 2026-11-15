@@ -2,10 +2,15 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:dartvex/dartvex.dart' as convex;
+// Keep the declared Flutter SDK floor, which predates material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
+import 'args.dart';
 import 'provider.dart';
 import 'runtime_client.dart';
+import 'safe_rebuild.dart';
+import 'snapshot.dart';
 
 /// Status of a paginated query.
 enum PaginationStatus {
@@ -34,6 +39,20 @@ typedef PaginatedQueryWidgetBuilder<T> =
       PaginationStatus status,
     );
 
+/// Builder used by [PaginatedQueryBuilder.errorBuilder] when the query fails.
+///
+/// [error] is the server or transport error of the failing page, or a
+/// [ConvexDecodeException] when an item could not be decoded. [items] are the
+/// items decoded before the failure, and [retry] restarts the query from the
+/// first page.
+typedef PaginatedQueryErrorWidgetBuilder<T> =
+    Widget Function(
+      BuildContext context,
+      Object error,
+      List<T> items,
+      VoidCallback retry,
+    );
+
 /// Widget that manages cursor-based pagination with Convex.
 ///
 /// Backed by the core reactive pagination engine (`ConvexClient.paginatedQuery`)
@@ -42,7 +61,15 @@ typedef PaginatedQueryWidgetBuilder<T> =
 /// stay gapless at page boundaries. `loadMore` extends the list using the last
 /// page's cursor; changing [query], [args], [pageSize], or [client] resets the
 /// query, while changing [fromJson] re-maps the already-loaded items in place
-/// (so an inline closure is safe — parent rebuilds do not reset pagination).
+/// (so an inline closure is safe — parent rebuilds do not reset pagination —
+/// but it re-decodes every loaded item on each parent rebuild; prefer a stable
+/// reference such as `Message.fromJson` when the parent rebuilds often).
+///
+/// Items whose raw value did not change between emissions are not decoded
+/// again. When the query fails, [errorBuilder] (if provided) receives the
+/// error object; decode failures are also reported to
+/// [FlutterError.reportError]. `loadMore` may be called from anywhere,
+/// including an `itemBuilder` during layout.
 ///
 /// ```dart
 /// PaginatedQueryBuilder<Message>(
@@ -57,6 +84,10 @@ typedef PaginatedQueryWidgetBuilder<T> =
 ///         : TextButton(onPressed: loadMore, child: Text('Load more')),
 ///     );
 ///   },
+///   errorBuilder: (context, error, items, retry) => TextButton(
+///     onPressed: retry,
+///     child: Text('Failed: $error — tap to retry'),
+///   ),
 /// )
 /// ```
 class PaginatedQueryBuilder<T> extends StatelessWidget {
@@ -69,6 +100,7 @@ class PaginatedQueryBuilder<T> extends StatelessWidget {
     this.args,
     this.pageSize = 20,
     this.client,
+    this.errorBuilder,
   }) : snapshotBuilder = null;
 
   /// Creates a builder with snapshots and load, retry, and reset controls.
@@ -80,7 +112,8 @@ class PaginatedQueryBuilder<T> extends StatelessWidget {
     this.args,
     this.pageSize = 20,
     this.client,
-  }) : builder = null;
+  }) : builder = null,
+       errorBuilder = null;
 
   /// Builds every pagination state and exposes query controls.
   final Widget Function(
@@ -108,6 +141,9 @@ class PaginatedQueryBuilder<T> extends StatelessWidget {
   /// Optional runtime client override. If omitted, uses [ConvexProvider.of].
   final ConvexRuntimeClient? client;
 
+  /// Builds errors with retained items and a callback that restarts page one.
+  final PaginatedQueryErrorWidgetBuilder<T>? errorBuilder;
+
   @override
   Widget build(BuildContext context) => _PaginatedQuery<T>(
     query: query,
@@ -115,11 +151,22 @@ class PaginatedQueryBuilder<T> extends StatelessWidget {
     pageSize: pageSize,
     client: client,
     decode: (raw) => fromJson(raw as Map<String, dynamic>),
+    decoderIdentity: fromJson,
     builder: (context, snapshot, loadMore) {
       final buildSnapshot = snapshotBuilder;
-      return buildSnapshot != null
-          ? buildSnapshot(context, snapshot, loadMore)
-          : builder!(context, snapshot.items, loadMore, snapshot.status);
+      if (buildSnapshot != null) {
+        return buildSnapshot(context, snapshot, loadMore);
+      }
+      final buildError = errorBuilder;
+      if (buildError != null && snapshot.error != null) {
+        return buildError(
+          context,
+          snapshot.error!,
+          snapshot.items,
+          snapshot.retry,
+        );
+      }
+      return builder!(context, snapshot.items, loadMore, snapshot.status);
     },
   );
 }
@@ -132,6 +179,7 @@ class ConvexPaginatedQuerySnapshot<T> {
     required this.status,
     required this.isDone,
     this.error,
+    this.hasPendingWrites = false,
     VoidCallback? onLoadMore,
     VoidCallback? onRetry,
     VoidCallback? onReset,
@@ -178,7 +226,11 @@ class ConvexPaginatedQuerySnapshot<T> {
   final bool isDone;
 
   /// The backend, stream, or decoding error, if any.
+  /// Item-decoding failures are wrapped in [ConvexDecodeException].
   final Object? error;
+
+  /// Whether optimistic writes affect any loaded page.
+  final bool hasPendingWrites;
 }
 
 /// A typed paginated query using generated argument and item codecs.
@@ -242,6 +294,7 @@ class ConvexTypedPaginatedQuery<Args, Item> extends StatelessWidget {
     query: query.name,
     args: query.encode(args),
     decode: query.decodeItem,
+    decoderIdentity: query.decodeItem,
     pageSize: pageSize,
     client: client,
     builder: (context, snapshot, loadMore) {
@@ -269,6 +322,7 @@ class _PaginatedQuery<T> extends StatefulWidget {
     required this.pageSize,
     required this.client,
     required this.decode,
+    required this.decoderIdentity,
     required this.builder,
   });
 
@@ -277,6 +331,7 @@ class _PaginatedQuery<T> extends StatefulWidget {
   final int pageSize;
   final ConvexRuntimeClient? client;
   final T Function(dynamic) decode;
+  final Object decoderIdentity;
   final Widget Function(
     BuildContext,
     ConvexPaginatedQuerySnapshot<T>,
@@ -288,7 +343,8 @@ class _PaginatedQuery<T> extends StatefulWidget {
   State<_PaginatedQuery<T>> createState() => _PaginatedQueryState<T>();
 }
 
-class _PaginatedQueryState<T> extends State<_PaginatedQuery<T>> {
+class _PaginatedQueryState<T> extends State<_PaginatedQuery<T>>
+    with ConvexSafeRebuild<_PaginatedQuery<T>> {
   static const DeepCollectionEquality _deepEquality = DeepCollectionEquality();
 
   ConvexRuntimeClient? _client;
@@ -297,10 +353,15 @@ class _PaginatedQueryState<T> extends State<_PaginatedQuery<T>> {
   Map<String, dynamic>? _subscribedArgs;
   int _queryGeneration = 0;
 
-  List<T> _items = const <Never>[];
+  List<T> _items = List<T>.unmodifiable(const <Never>[]);
   PaginationStatus _status = PaginationStatus.loading;
-  convex.ConvexPaginatedResult? _lastResult;
   Object? _error;
+  convex.ConvexPaginatedResult? _lastResult;
+
+  /// Decoded items keyed by their raw map instance. The core reuses the item
+  /// maps of unchanged pages, so an emission only decodes what changed.
+  /// Replaced whenever [PaginatedQueryBuilder.fromJson] changes.
+  Expando<_Decoded<T>> _decodedItems = Expando<_Decoded<T>>();
 
   @override
   void didChangeDependencies() {
@@ -325,99 +386,137 @@ class _PaginatedQueryState<T> extends State<_PaginatedQuery<T>> {
         )) {
       _client = client;
       _start();
-    } else if (oldWidget.decode != widget.decode) {
+    } else if (oldWidget.decoderIdentity != widget.decoderIdentity) {
       // The item mapper is not part of the query identity — an inline closure
       // differs on every parent rebuild, and restarting would drop every
       // loaded page. Re-map the current result in place instead; a rebuild is
       // already scheduled, so plain assignment is enough.
+      _decodedItems = Expando<_Decoded<T>>();
       final result = _lastResult;
       if (result != null) {
-        try {
-          _items = _mapItems(result);
-          _status = _mapStatus(result.status);
-          _error = result.error;
-        } catch (error) {
-          _error = error;
-          _status = PaginationStatus.error;
-        }
+        _applyResult(result);
       }
     }
   }
 
+  /// (Re)starts the query. Called from lifecycle callbacks (always followed
+  /// by a build) or inside [applyAndRebuild], so state is assigned directly.
   void _start() {
     final generation = ++_queryGeneration;
     _subscription?.cancel();
+    _subscription = null;
     _query?.cancel();
-    final argsSnapshot = _snapshotArgs(widget.args);
-    _subscribedArgs = argsSnapshot;
-    final query = _client!.paginatedQuery(
-      widget.query,
-      argsSnapshot,
-      pageSize: widget.pageSize,
-    );
+    _query = null;
+    _lastResult = null;
+    _error = null;
+    _decodedItems = Expando<_Decoded<T>>();
+    final ConvexRuntimePaginatedQuery query;
+    try {
+      final argsSnapshot = snapshotConvexArgs(widget.args);
+      _subscribedArgs = argsSnapshot;
+      query = _client!.paginatedQuery(
+        widget.query,
+        argsSnapshot,
+        pageSize: widget.pageSize,
+      );
+    } catch (error) {
+      // A disposed client throws synchronously; show the error state instead
+      // of an ErrorWidget. With no query, the next dependency or client change
+      // (or the error builder's retry) tries again.
+      _items = List<T>.unmodifiable(const <Never>[]);
+      _status = PaginationStatus.error;
+      _error = error;
+      return;
+    }
     _query = query;
     // Seed synchronously from the current snapshot (a build is already pending
     // from this lifecycle callback), then update reactively from the stream.
-    final initial = query.current;
-    _lastResult = initial;
-    _error = initial.error;
-    try {
-      _items = _mapItems(initial);
-      _status = _mapStatus(initial.status);
-    } catch (error) {
-      _error = error;
-      _items = const <Never>[];
-      _status = PaginationStatus.error;
-    }
+    _items = List<T>.unmodifiable(const <Never>[]);
+    _applyResult(query.current);
     _subscription = query.stream.listen(
       (result) {
-        if (generation != _queryGeneration) {
+        if (generation != _queryGeneration || !mounted) {
           return;
         }
-        _apply(result);
+        // Synchronous core stream: loadMore() from an itemBuilder emits during
+        // layout, so the rebuild may be deferred to after the frame.
+        applyAndRebuild(() => _applyResult(result));
       },
       onError: (Object error, StackTrace stackTrace) {
         if (generation != _queryGeneration || !mounted) {
           return;
         }
-        _lastResult = convex.ConvexPaginatedResult(
-          results: _lastResult?.results ?? const <dynamic>[],
-          status: convex.ConvexPaginationStatus.error,
-          isDone: false,
-          error: error,
-        );
-        setState(() {
-          _error = error;
+        applyAndRebuild(() {
+          _lastResult = convex.ConvexPaginatedResult(
+            results: _lastResult?.results ?? const <dynamic>[],
+            status: convex.ConvexPaginationStatus.error,
+            isDone: false,
+            error: error,
+            hasPendingWrites: _lastResult?.hasPendingWrites ?? false,
+          );
           _status = PaginationStatus.error;
+          _error = error;
         });
       },
     );
   }
 
-  void _apply(convex.ConvexPaginatedResult result) {
-    if (!mounted) {
-      return;
-    }
+  /// Maps [result] into the items, status and error. A decode failure keeps
+  /// the current items, switches to the error status, and is reported.
+  void _applyResult(convex.ConvexPaginatedResult result) {
     _lastResult = result;
-    _error = result.error;
-    late final List<T> items;
-    late final PaginationStatus status;
     try {
-      items = _mapItems(result);
-      status = _mapStatus(result.status);
-    } catch (error) {
+      _items = _mapItems(result);
+      _status = _mapStatus(result.status);
+      _error = _status == PaginationStatus.error
+          ? (result.error ??
+                StateError(
+                  'Paginated query "${widget.query}" '
+                  'failed',
+                ))
+          : null;
+    } on ConvexDecodeException catch (error) {
+      _status = PaginationStatus.error;
       _error = error;
-      items = _items;
-      status = PaginationStatus.error;
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error.error,
+          stack: error.stackTrace,
+          library: 'dartvex_flutter',
+          context: ErrorDescription(
+            'while decoding an item of PaginatedQueryBuilder '
+            '"${widget.query}"',
+          ),
+        ),
+      );
     }
-    setState(() {
-      _items = items;
-      _status = status;
-    });
   }
 
   List<T> _mapItems(convex.ConvexPaginatedResult result) {
-    return result.results.map(widget.decode).toList(growable: false);
+    final decodedItems = _decodedItems;
+    final decode = widget.decode;
+    final items = <T>[];
+    for (final item in result.results) {
+      final memoizable = item is Map;
+      if (memoizable) {
+        final cached = decodedItems[item];
+        if (cached != null) {
+          items.add(cached.value);
+          continue;
+        }
+      }
+      final T decoded;
+      try {
+        decoded = decode(item);
+      } catch (error, stackTrace) {
+        throw ConvexDecodeException(error, stackTrace, value: item);
+      }
+      if (memoizable) {
+        decodedItems[item] = _Decoded<T>(decoded);
+      }
+      items.add(decoded);
+    }
+    return List<T>.unmodifiable(items);
   }
 
   static PaginationStatus _mapStatus(convex.ConvexPaginationStatus status) {
@@ -435,24 +534,18 @@ class _PaginatedQueryState<T> extends State<_PaginatedQuery<T>> {
     }
   }
 
-  Map<String, dynamic> _snapshotArgs(Map<String, dynamic>? args) {
-    return convex.jsonToConvex(
-          convex.convexToJson(args ?? const <String, dynamic>{}),
-        )
-        as Map<String, dynamic>;
-  }
-
   void _loadMore() {
-    // Also guard decoding failures, which only exist in the widget layer.
-    if (!mounted || _status != PaginationStatus.idle) {
-      return;
-    }
+    if (!mounted || _status != PaginationStatus.idle) return;
     _query?.loadMore();
   }
 
   void _restart({required bool onlyIfFailed}) {
-    if (!mounted || (onlyIfFailed && _status != PaginationStatus.error)) return;
-    setState(_start);
+    if (!mounted ||
+        _client == null ||
+        (onlyIfFailed && _status != PaginationStatus.error)) {
+      return;
+    }
+    applyAndRebuild(_start);
   }
 
   @override
@@ -470,18 +563,27 @@ class _PaginatedQueryState<T> extends State<_PaginatedQuery<T>> {
       if (mounted && generation == _queryGeneration) action();
     }
 
+    void loadMore() => act(_loadMore);
     return widget.builder(
       context,
       ConvexPaginatedQuerySnapshot<T>(
-        items: List<T>.unmodifiable(_items),
+        items: _items,
         status: _status,
         isDone: _lastResult?.isDone ?? false,
         error: _error,
-        onLoadMore: () => act(_loadMore),
+        hasPendingWrites: _lastResult?.hasPendingWrites ?? false,
+        onLoadMore: loadMore,
         onRetry: () => act(() => _restart(onlyIfFailed: true)),
         onReset: () => act(() => _restart(onlyIfFailed: false)),
       ),
-      () => act(_loadMore),
+      loadMore,
     );
   }
+}
+
+/// Wraps a decoded item so a nullable `T` can be memoized in an [Expando].
+class _Decoded<T> {
+  const _Decoded(this.value);
+
+  final T value;
 }

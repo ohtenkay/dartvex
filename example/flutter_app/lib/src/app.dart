@@ -4,6 +4,8 @@ import 'package:dartvex_auth_better/dartvex_auth_better.dart';
 import 'package:dartvex/dartvex.dart';
 import 'package:dartvex_flutter/dartvex_flutter.dart';
 import 'package:dartvex_local/dartvex_local.dart';
+// Keep the declared Flutter SDK floor, which predates material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -399,6 +401,9 @@ class _DartvexDemoAppState extends State<DartvexDemoApp> {
       betterAuthClient?.dispose();
       betterAuthProvider?.client.close();
       authClient?.dispose();
+      // The demo owns the client: every wrapper above was created with
+      // disposeClient: false, so close it here or its socket keeps running.
+      client.dispose();
       return;
     }
 
@@ -417,11 +422,10 @@ class _DartvexDemoAppState extends State<DartvexDemoApp> {
   }
 
   void _disposeClient() {
+    final client = _client;
+    final localClient = _localClient;
     _localRuntime?.dispose();
     _localRuntime = null;
-    if (_localClient != null) {
-      unawaited(_localClient!.dispose());
-    }
     _localClient = null;
     _localAvailabilityError = null;
     _runtime?.dispose();
@@ -434,6 +438,16 @@ class _DartvexDemoAppState extends State<DartvexDemoApp> {
     _authClient = null;
     _client = null;
     _api = null;
+    // The demo owns the ConvexClient (all wrappers use disposeClient: false):
+    // close it once the local client has released its remote subscriptions,
+    // otherwise every auth-mode switch leaks a live socket.
+    unawaited(() async {
+      try {
+        await localClient?.dispose();
+      } finally {
+        client?.dispose();
+      }
+    }());
   }
 
   Widget _buildHome() {

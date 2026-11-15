@@ -13,6 +13,8 @@ Object? _canonicalType(ConvexType type) {
     ConvexNumberType() => const <String, Object?>{'type': 'number'},
     ConvexNullType() => const <String, Object?>{'type': 'null'},
     ConvexBigIntType() => const <String, Object?>{'type': 'bigint'},
+    ConvexCommitTsType() => const <String, Object?>{'type': 'commitTs'},
+    ConvexFunctionHandleType() => const <String, Object?>{'type': 'function'},
     ConvexBytesType() => const <String, Object?>{'type': 'bytes'},
     ConvexLiteralType(:final value) => <String, Object?>{
       'type': 'literal',

@@ -60,41 +60,84 @@ class ConvexStorage {
 
   /// Upload a file to Convex storage.
   ///
-  /// 1. Calls [uploadUrlAction] (a Convex mutation) to get a signed upload URL.
+  /// 1. Calls [uploadUrlAction] to get a signed upload URL. It is invoked as a
+  ///    Convex mutation by default; set [useAction] when the backend generates
+  ///    upload URLs from an action.
   /// 2. POSTs [bytes] to that URL with the given [contentType].
   /// 3. Returns the `storageId` from the response.
+  ///
+  /// [filename] is only used for diagnostics (debug logging); it is not sent
+  /// to Convex or stored with the file. Store it yourself, for example by
+  /// passing it to the mutation that records the returned `storageId`.
+  ///
+  /// [timeout] bounds the upload request (sending the bytes and reading the
+  /// response); when it expires the request is aborted and a
+  /// [TimeoutException] is thrown. It does not apply to the upload-URL call,
+  /// which follows the client's own mutation/action timeouts. Defaults to no
+  /// timeout.
   ///
   /// Throws [ConvexFileUploadException] if the upload HTTP request fails.
   Future<String> uploadFile({
     required String uploadUrlAction,
     required Uint8List bytes,
-    required String filename,
+    String? filename,
     required String contentType,
     Map<String, dynamic>? uploadUrlArgs,
+    bool useAction = false,
+    Duration? timeout,
   }) async {
+    if (timeout != null && timeout <= Duration.zero) {
+      throw ArgumentError.value(timeout, 'timeout', 'must be positive');
+    }
     _log(
       DartvexLogLevel.debug,
       'Starting file upload',
       data: <String, Object?>{
         'uploadUrlAction': uploadUrlAction,
-        'filename': filename,
+        if (filename != null) 'filename': filename,
         'contentType': contentType,
         'sizeBytes': bytes.length,
       },
     );
+    final urlArgs = uploadUrlArgs ?? const <String, dynamic>{};
+    final uploadUrl = useAction
+        ? await caller.action(uploadUrlAction, urlArgs)
+        : await caller.mutate(uploadUrlAction, urlArgs);
+
+    final uri = _parseUploadUri(uploadUrlAction, uploadUrl);
+    if (uri.scheme != 'https' && uri.scheme != 'http') {
+      _log(
+        DartvexLogLevel.error,
+        'Upload URL has invalid scheme',
+        data: <String, Object?>{'scheme': uri.scheme},
+      );
+      throw ConvexStorageException(
+        'Upload URL resolver returned an unsupported URL scheme: ${uri.scheme}',
+      );
+    }
+    if (uri.host.isEmpty) {
+      _log(
+        DartvexLogLevel.error,
+        'Upload URL has no host',
+        data: <String, Object?>{'url': uri.toString()},
+      );
+      throw const ConvexStorageException(
+        'Upload URL resolver returned a URL with no host',
+      );
+    }
+
     return uploadTo<String>(
       bytes: bytes,
       contentType: contentType,
-      resolveRequest: () async {
-        final uploadUrl = await caller.mutate(
-          uploadUrlAction,
-          uploadUrlArgs ?? const <String, dynamic>{},
-        );
-        return ConvexUploadRequest(
-          url: _parseUploadUri(uploadUrlAction, uploadUrl),
-        );
+      resolveRequest: () => ConvexUploadRequest(url: uri),
+      decodeResponse: (response) {
+        // Convex's upload endpoint requires 200; custom endpoints accept 2xx.
+        if (response.statusCode != 200) {
+          throw ConvexFileUploadException(response.statusCode, response.body);
+        }
+        return _decodeUploadResponse(response);
       },
-      decodeResponse: _decodeUploadResponse,
+      timeout: timeout,
     );
   }
 
@@ -108,7 +151,8 @@ class ConvexStorage {
   ///
   /// [retry] decides which failures may be repeated safely. The default stops
   /// on every failure. [maxAttempts] bounds attempts per [ConvexUpload.run].
-  /// [timeout] limits byte preparation and each authorized transfer separately.
+  /// [timeout] limits byte preparation and each attempt separately. An attempt
+  /// includes request resolution, transfer, and response decoding.
   /// The operation exposes state and progress and owns cancellation. Dispose it
   /// when its UI owner is removed.
   ConvexUpload<T> createUpload<T>({
@@ -162,6 +206,7 @@ class ConvexStorage {
     }
     final abort = Completer<void>();
     var finished = false;
+    http.Client? ownedClient;
     void cancel() {
       if (!finished && !abort.isCompleted) abort.complete();
     }
@@ -171,6 +216,11 @@ class ConvexStorage {
     }
 
     Future<T> transfer() async {
+      // Let an already-completed cancellation trigger settle before callbacks.
+      await Future<void>.value();
+      if (abort.isCompleted) {
+        throw const ConvexFileUploadCancelledException();
+      }
       final target = await resolveRequest();
       if (abort.isCompleted) {
         throw const ConvexFileUploadCancelledException();
@@ -185,7 +235,9 @@ class ConvexStorage {
         target.method,
         target.url,
         abortTrigger: abort.future,
-        onProgress: onProgress,
+        onProgress: (sent, total) {
+          if (!finished && !abort.isCompleted) onProgress?.call(sent, total);
+        },
       )
         ..headers.addAll(target.headers)
         ..headers['Content-Type'] = contentType
@@ -200,32 +252,33 @@ class ConvexStorage {
         },
       );
       onProgress?.call(0, bytes.length);
-      final client = _httpClient ?? createDefaultHttpClient();
+      if (abort.isCompleted) {
+        throw const ConvexFileUploadCancelledException();
+      }
+      final client = _httpClient ?? (ownedClient = createDefaultHttpClient());
+      final http.Response response;
       try {
-        final response =
-            await http.Response.fromStream(await client.send(request));
-        if (abort.isCompleted) {
-          throw const ConvexFileUploadCancelledException();
-        }
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          _log(
-            DartvexLogLevel.error,
-            'File upload failed',
-            data: <String, Object?>{'statusCode': response.statusCode},
-          );
-          throw ConvexFileUploadException(response.statusCode, response.body);
-        }
-        final result = await decodeResponse(response);
-        if (abort.isCompleted) {
-          throw const ConvexFileUploadCancelledException();
-        }
-        _log(DartvexLogLevel.debug, 'File upload succeeded');
-        return result;
+        response = await http.Response.fromStream(await client.send(request));
       } on http.RequestAbortedException {
         throw const ConvexFileUploadCancelledException();
-      } finally {
-        if (_httpClient == null) client.close();
       }
+      if (abort.isCompleted) {
+        throw const ConvexFileUploadCancelledException();
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        _log(
+          DartvexLogLevel.error,
+          'File upload failed',
+          data: <String, Object?>{'statusCode': response.statusCode},
+        );
+        throw ConvexFileUploadException(response.statusCode, response.body);
+      }
+      final result = await decodeResponse(response);
+      if (abort.isCompleted) {
+        throw const ConvexFileUploadCancelledException();
+      }
+      _log(DartvexLogLevel.debug, 'File upload succeeded');
+      return result;
     }
 
     try {
@@ -238,10 +291,16 @@ class ConvexStorage {
       if (timeout == null) return await operation;
       return await operation.timeout(timeout, onTimeout: () {
         cancel();
+        _log(
+          DartvexLogLevel.error,
+          'File upload timed out',
+          data: <String, Object?>{'timeoutMs': timeout.inMilliseconds},
+        );
         throw TimeoutException('File upload timed out', timeout);
       });
     } finally {
       finished = true;
+      ownedClient?.close();
     }
   }
 

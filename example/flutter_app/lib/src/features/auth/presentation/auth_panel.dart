@@ -1,5 +1,7 @@
 import 'package:dartvex/dartvex.dart';
 import 'package:dartvex_flutter/dartvex_flutter.dart';
+// Keep the declared Flutter SDK floor, which predates material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 import '../../../../convex_api/api.dart';
@@ -38,8 +40,8 @@ class AuthPanel extends StatelessWidget {
       eyebrow: 'AUTH FLOW',
       title: 'Demo Auth',
       subtitle:
-          'Showcases provider-backed login, cached session restore, and silent '
-          'token refresh after reconnect.',
+          'Showcases provider-backed login, cached session restore, and '
+          'reconnects that keep the session.',
       trailing: const ThreadPill(
         label: 'Auth client',
         backgroundColor: Color(0x1A00D1FF),
@@ -51,8 +53,9 @@ class AuthPanel extends StatelessWidget {
         children: <Widget>[
           const InlineNotice(
             message:
-                'Local demo provider. Reconnect drops the socket so silent '
-                'refresh becomes visible.',
+                'Local demo provider. Reconnect drops the socket and replays '
+                'the cached token without calling the provider; use "Force a '
+                'token refresh" on the Sync tab to see a re-fetch.',
           ),
           if (!demoAuthProvider.hasConfiguredToken) ...<Widget>[
             const SizedBox(height: 12),

@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:dartvex_flutter/dartvex_flutter.dart';
+// Keep the declared Flutter SDK floor, which predates material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 import 'concierge_theme.dart';
@@ -186,7 +188,7 @@ class _ExampleHomePageState extends State<ExampleHomePage> {
                 },
               ),
               ConvexMutation<Map<String, dynamic>, String>(
-                mutation: ConvexMutationReference(
+                mutation: ConvexMutationReference<Map<String, dynamic>, String>(
                   name: 'messages:send',
                   encode: (args) => args,
                   decode: (raw) => raw as String,

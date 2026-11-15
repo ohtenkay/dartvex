@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:dartvex/dartvex.dart' as convex;
 import 'package:dartvex_flutter/dartvex_flutter.dart';
+// Keep the declared Flutter SDK floor, which predates material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -279,6 +281,7 @@ class _FakeDemoAuthClient implements convex.ConvexAuthClient<DemoUserSession> {
   Future<dynamic> mutate(
     String name, [
     Map<String, dynamic> args = const <String, dynamic>{},
+    convex.OptimisticUpdate? optimisticUpdate,
   ]) async => throw UnimplementedError();
 
   @override

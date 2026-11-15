@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import '../values/json_codec.dart';
 import 'local_state.dart';
 import 'remote_query_set.dart';
@@ -225,6 +227,23 @@ class OptimisticQueryResults {
       <({OptimisticUpdate update, int mutationId})>[];
   final Set<String> _optimisticTokens = <String>{};
 
+  /// Called when a still-pending update throws while it is replayed on fresh
+  /// server data. The failing layer is dropped either way (an update that
+  /// cannot be replayed must not block the others); this only lets the host
+  /// surface the otherwise silent failure, for example to a logger.
+  void Function(int mutationId, Object error, StackTrace stackTrace)?
+      onReplayError;
+
+  /// Discards every result and optimistic layer of the previous identity.
+  /// Returns the affected tokens so active queries can report loading.
+  List<String> clear() {
+    final tokens = _queryResults.keys.toList();
+    _queryResults.clear();
+    _optimisticUpdates.clear();
+    _optimisticTokens.clear();
+    return tokens;
+  }
+
   /// Rebuilds the overlay from fresh [serverQueryResults], dropping the layers
   /// of mutations in [optimisticUpdatesToDrop], and replaying the rest on top.
   ///
@@ -248,7 +267,15 @@ class OptimisticQueryResults {
       final store = _OptimisticLocalStoreImpl(candidateResults);
       try {
         entry.update(store);
-      } catch (_) {
+      } catch (error, stackTrace) {
+        final onError = onReplayError;
+        if (onError != null) {
+          try {
+            onError(entry.mutationId, error, stackTrace);
+          } catch (_) {
+            // Reporting must never change overlay behavior.
+          }
+        }
         continue;
       }
       _queryResults = candidateResults;
@@ -285,7 +312,9 @@ class OptimisticQueryResults {
   /// Adds an optimistic [update] tagged with its mutation's [mutationId] and
   /// applies it on top of the current overlay.
   ///
-  /// Returns the tokens the update touched so the caller can notify subscribers.
+  /// Returns the tokens the update touched, each once and in first-write
+  /// order, so the caller notifies every affected subscriber exactly once even
+  /// when the update writes the same query several times.
   List<String> applyOptimisticUpdate(OptimisticUpdate update, int mutationId) {
     final candidateResults =
         Map<String, OverlayServerQuery>.from(_queryResults);
@@ -294,7 +323,7 @@ class OptimisticQueryResults {
     _queryResults = candidateResults;
     _optimisticUpdates.add((update: update, mutationId: mutationId));
     _optimisticTokens.addAll(store.modifiedQueries);
-    return store.modifiedQueries;
+    return LinkedHashSet<String>.of(store.modifiedQueries).toList();
   }
 
   /// Atomically replaces a standalone layer, rebasing it on server results.

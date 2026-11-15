@@ -6,13 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'test_helpers/fake_runtime_client.dart';
 
-ConvexMutationReference<Map<String, dynamic>, T> rawMutation<T>(String name) =>
-    ConvexMutationReference(
-      name: name,
-      encode: (args) => args,
-      decode: (raw) => raw as T,
-    );
-
 void main() {
   Widget wrapWithProvider({
     required FakeRuntimeClient client,
@@ -38,7 +31,11 @@ void main() {
       wrapWithProvider(
         client: client,
         child: ConvexMutation<Map<String, dynamic>, String>(
-          mutation: rawMutation<String>('messages:send'),
+          mutation: ConvexMutationReference<Map<String, dynamic>, String>(
+            name: 'messages:send',
+            encode: (args) => args,
+            decode: (raw) => raw as String,
+          ),
           builder: (context, execute, state) {
             mutate = execute;
             snapshot = state;
@@ -78,7 +75,11 @@ void main() {
       wrapWithProvider(
         client: client,
         child: ConvexMutation<Map<String, dynamic>, String>(
-          mutation: rawMutation<String>('messages:send'),
+          mutation: ConvexMutationReference<Map<String, dynamic>, String>(
+            name: 'messages:send',
+            encode: (args) => args,
+            decode: (raw) => raw as String,
+          ),
           builder: (context, execute, state) {
             mutate = execute;
             snapshot = state;
@@ -111,7 +112,11 @@ void main() {
       wrapWithProvider(
         client: client,
         child: ConvexMutation<Map<String, dynamic>, String>(
-          mutation: rawMutation<String>('messages:send'),
+          mutation: ConvexMutationReference<Map<String, dynamic>, String>(
+            name: 'messages:send',
+            encode: (args) => args,
+            decode: (raw) => raw as String,
+          ),
           builder: (context, execute, state) {
             mutate = execute;
             return const SizedBox();
@@ -151,7 +156,11 @@ void main() {
       return wrapWithProvider(
         client: client,
         child: ConvexMutation<Map<String, dynamic>, String>(
-          mutation: rawMutation<String>(mutation),
+          mutation: ConvexMutationReference<Map<String, dynamic>, String>(
+            name: mutation,
+            encode: (args) => args,
+            decode: (raw) => raw as String,
+          ),
           builder: (context, execute, state) {
             mutate = execute;
             snapshot = state;
@@ -203,7 +212,11 @@ void main() {
       wrapWithProvider(
         client: client,
         child: ConvexMutation<Map<String, dynamic>, String>(
-          mutation: rawMutation<String>('messages:send'),
+          mutation: ConvexMutationReference<Map<String, dynamic>, String>(
+            name: 'messages:send',
+            encode: (args) => args,
+            decode: (raw) => raw as String,
+          ),
           optimisticUpdate: optimistic,
           builder: (context, execute, state) {
             mutate = execute;
@@ -362,7 +375,11 @@ void main() {
         wrapWithProvider(
           client: client,
           child: ConvexMutation<Map<String, dynamic>, dynamic>(
-            mutation: rawMutation<dynamic>('messages:send'),
+            mutation: ConvexMutationReference<Map<String, dynamic>, dynamic>(
+              name: 'messages:send',
+              encode: (args) => args,
+              decode: (raw) => raw as dynamic,
+            ),
             builder: (context, execute, state) {
               mutate = execute;
               return const SizedBox();
@@ -394,7 +411,11 @@ void main() {
       wrapWithProvider(
         client: client,
         child: ConvexMutation<Map<String, dynamic>, dynamic>(
-          mutation: rawMutation<dynamic>('messages:send'),
+          mutation: ConvexMutationReference<Map<String, dynamic>, dynamic>(
+            name: 'messages:send',
+            encode: (args) => args,
+            decode: (raw) => raw as dynamic,
+          ),
           builder: (context, execute, state) {
             mutate = execute;
             snapshot = state;

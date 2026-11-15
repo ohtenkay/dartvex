@@ -8,21 +8,6 @@
 
 Pure Dart client for [Convex](https://convex.dev) with WebSocket sync, type-safe values, and reactive subscriptions. Works on iOS, Android, web, and desktop.
 
-## Fork additions
-
-This package is part of [ohtenkay/dartvex](https://github.com/ohtenkay/dartvex),
-a fork of [AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
-
-Adds typed query and mutation references, a typed optimistic query store,
-stable optimistic invocation IDs/timestamps, and replaceable optimistic layers.
-See [typed optimistic updates](#typed-optimistic-updates-fork-addition) and the
-[Unreleased changelog](CHANGELOG.md#unreleased).
-
-The pub.dev installation examples below refer to upstream releases. Use this
-checkout or Git dependencies pinned to a fork commit for fork additions, keeping
-related Dartvex packages on the same revision. See the
-[root fork overview](../../README.md#fork-additions).
-
 <p align="center">
   <a href="https://github.com/AndreFrelicot/dartvex">
     <img src="https://raw.githubusercontent.com/AndreFrelicot/dartvex/main/assets/dartvex-poster.webp" width="900" alt="Dartvex Flutter demo — real-time chats running on iOS and macOS" />
@@ -35,14 +20,13 @@ related Dartvex packages on the same revision. See the
 |---------|-------------|
 | **[`dartvex`](https://pub.dev/packages/dartvex)** | Core client — WebSocket sync, subscriptions, auth |
 | [`dartvex_flutter`](https://pub.dev/packages/dartvex_flutter) | Flutter widgets — Provider, Query, Mutation |
-| [`dartvex_codegen`](https://pub.dev/packages/dartvex_codegen) | CLI code generator — type-safe Dart bindings from schema |
+| [`dartvex_codegen`](https://pub.dev/packages/dartvex_codegen) | CLI code generator — type-safe Dart bindings from function validators |
 | [`dartvex_local`](https://pub.dev/packages/dartvex_local) | Offline support — SQLite cache, mutation queue |
 | [`dartvex_auth_better`](https://pub.dev/packages/dartvex_auth_better) | Better Auth adapter |
 
 > **Building a Flutter app?** Start with [`dartvex_flutter`](https://pub.dev/packages/dartvex_flutter) — it pulls in `dartvex` automatically.
 
-Fork source and docs: [github.com/ohtenkay/dartvex](https://github.com/ohtenkay/dartvex).
-Upstream: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex).
+Source and full docs: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/dartvex)
 
 ## Features
 
@@ -64,27 +48,8 @@ Upstream: [github.com/AndreFrelicot/dartvex](https://github.com/AndreFrelicot/da
   auth-refreshing signal for "authenticating…" indicators
 - Native and browser WebSocket adapters (conditional import)
 - Structured opt-in logging for transport, auth, and storage diagnostics
-
-## Typed optimistic updates (fork addition)
-
-Generated bindings expose `ConvexQueryReference<Args, Result>` and
-`ConvexMutationReference<Args, Result>` with wire codecs; zero-argument
-references use `NoArgs`.
-
-`TypedOptimisticUpdate<Args>` receives a `TypedOptimisticLocalStore`, mutation
-arguments, and an `OptimisticMutationContext`. The store supports typed
-`getQuery`, `getAllQueries`, `setQuery`, `updateQuery`, and `clearQuery` using
-query references. Bind a callback to its arguments with
-`bindTypedOptimisticUpdate`; temporary IDs and timestamps remain stable across
-callback replays. Keep updates synchronous and query results immutable.
-`getQuery` returns null for both absent and actual null results;
-`updateQuery` skips null results.
-
-`ConvexClient.createOptimisticUpdate` creates a local layer independent of a
-network request. Call `replace` to change the overlay and `dispose` when the
-operation is confirmed or abandoned. This supports queued latest-value writes;
-see [the Flutter guide](../dartvex_flutter/README.md#latest-value-mutations-fork-addition).
-These layers are in-memory and do not provide durable offline mutation replay.
+- Tracks the official Convex JavaScript client **1.49.0** (see
+  [Compatibility](#compatibility))
 
 ## Platform Support
 
@@ -107,8 +72,21 @@ always takes precedence.
 
 ```yaml
 dependencies:
-  dartvex: ^0.2.0
+  dartvex: ^0.3.0
 ```
+
+Requires Dart `^3.6.0`.
+
+## Compatibility
+
+Dartvex 0.3.0 implements the sync protocol, auth flow, and value encoding of
+the official Convex JavaScript client **1.49.0** (`convex` on npm). Behavior
+described in these docs and the CHANGELOG as matching "the official client"
+refers to that release. The version is exported as `convexSyncApiVersion`
+and sent as the default `ConvexClientConfig.apiVersion` (the
+`/api/<version>/sync` path segment); it is bumped deliberately, after
+reviewing the official client's changes, in a Dartvex release. The default
+`clientId` is `dartvex-<version>` (`dartvexVersion`).
 
 ## Usage
 
@@ -132,6 +110,12 @@ subscription.stream.listen((result) {
 final current = await client.query('messages:list', {'channel': 'general'});
 await client.mutate('messages:send', {'body': 'Hello'});
 ```
+
+Use the deployment's `https://<name>.convex.cloud` URL; the `.convex.site`
+host serves HTTP actions only and is rejected. One-shot `query()` /
+`queryOnce()` always wait for a fresh server result (live `subscribe()`
+calls may start from the client's recent cache). While offline they wait for
+the reconnect unless `ConvexClientConfig.queryTimeout` bounds the wait.
 
 ## Auth
 
@@ -172,6 +156,54 @@ await handle.cancel();
 await client.clearAuth();
 ```
 
+`onAuthChange(true)` fires once per auth flow, when the server first confirms
+the token. Read the current state with `client.isAuthenticated` (the
+`authState` stream does not replay) and the token in use — refreshed tokens
+included — with `client.currentAuthToken` (also on `ConvexClientWithAuth`);
+use it for `Authorization: Bearer ...` on Convex HTTP actions, since a
+session object captured at login keeps the login-time token.
+
+`setAuth`, `setAuthWithRefresh` and `clearAuth` start a new identity: live
+queries report loading and discard previous results and optimistic layers
+until the server confirms that identity. Use `updateAuthToken` for a renewed
+token of the same user; refreshes preserve live results. With `dartvex_local`,
+apply the new auth first, then `await local.reset()` to purge persisted data.
+
+Auth-related configuration:
+
+- `ConvexClientConfig(expectAuth: true)` holds every query, mutation, and
+  action until the first `setAuth` / `setAuthWithRefresh` / `clearAuth`, so
+  nothing runs unauthenticated during app start (call `clearAuth()` when the
+  user is known to be signed out).
+- `initialAuthTokenReuse` (experimental, default `false`) keeps a cached
+  token that the server confirms instead of fetching a fresh one right away.
+- `authTokenType` is `'User'` (default) or `'Admin'`; other values throw.
+
+### Deployment-issued JWTs
+
+A Convex mutation can mint short-lived tokens with `ctx.auth.signJwt` (an
+ES256 JWT whose issuer is the deployment's `CONVEX_CLOUD_URL`, lifetime at
+most 1 hour), so an app can authenticate with a credential your backend
+verifies itself — no external identity provider. Trust the deployment as a
+`customJwt` provider in `auth.config.ts` (`issuer: CONVEX_CLOUD_URL`,
+`jwks: <CONVEX_CLOUD_URL>/.well-known/jwks.json`, `algorithm: "ES256"`), then
+let `setAuthWithRefresh` call the mutation. Mint tokens on a separate,
+unauthenticated client, because the authenticated one pauses its socket
+while it refreshes a rejected token:
+
+```dart
+final tokenClient = ConvexClient('https://your-deployment.convex.cloud');
+await client.setAuthWithRefresh(
+  fetchToken: ({required bool forceRefresh}) async =>
+      await tokenClient.mutate('session:issueToken', {
+        'credential': credential,
+      }) as String,
+);
+```
+
+The `dartvex-setup-auth` agent skill in the repository has the full
+backend recipe.
+
 ## One-shot Query
 
 For non-reactive reads (splash screen, config loading), use `queryOnce<T>()`:
@@ -199,7 +231,13 @@ final count = await client.queryOnce<BigInt>('counters:get');
 ```
 
 Plain Dart `int` values intentionally stay JSON numbers so `v.number()` calls
-continue to work as expected.
+continue to work as expected. An `int` beyond ±2^53 that a float64 cannot
+represent exactly throws an `ArgumentError` instead of silently changing;
+pass such values as `BigInt` (`v.int64()`).
+
+`Uint8List` maps to `v.bytes()`. A mutation's unresolved commit timestamp
+(`{"$commitTs": null}`, convex 1.43+) decodes to
+`ConvexCommitTsPlaceholder.instance` and encodes back unchanged.
 
 ## Query Errors
 
@@ -233,10 +271,12 @@ final storage = ConvexStorage(client);
 
 // Upload
 final storageId = await storage.uploadFile(
-  uploadUrlAction: 'files:generateUploadUrl',
+  uploadUrlAction: 'files:generateUploadUrl', // a mutation by default
   bytes: imageBytes,
-  filename: 'photo.jpg',
   contentType: 'image/jpeg',
+  filename: 'photo.jpg', // optional, only used in debug logs
+  timeout: const Duration(minutes: 2), // optional, bounds the upload POST
+  // useAction: true, // when the upload URL comes from an action
 );
 
 // Get download URL
@@ -245,6 +285,12 @@ final url = await storage.getFileUrl(
   storageId: storageId,
 );
 ```
+
+Small files can skip the upload URL: Convex mutations can call
+`ctx.storage.store(new Blob([bytes]))`, so pass the `Uint8List` as a
+`v.bytes()` argument to a mutation that stores the file and records it in one
+transaction. Function-argument size limits apply, so keep `uploadFile` for
+larger files.
 
 ## Logging
 
@@ -309,6 +355,10 @@ To reconnect the instant the device regains connectivity instead of waiting out
 the backoff, supply a `connectivitySignal`. Flutter apps can use
 `ConnectivityPlusSignal` from `dartvex_flutter`.
 
+`ConvexClient(url, onServerDisconnectError: (message) => ...)` is an
+experimental telemetry hook that receives a description of each abnormal
+server disconnect (mirrors the official client's unstable option).
+
 ## Optimistic Updates
 
 Pass an `OptimisticUpdate` as the third argument to `mutate` to overlay query
@@ -356,12 +406,16 @@ if (!page.isDone) {
   page.loadMore();
 }
 
+// Restart from the first page (for example on pull-to-refresh).
+page.reset();
+
 // Release every page subscription when done.
 page.cancel();
 ```
 
 `ConvexPaginationStatus` reports `loadingFirstPage`, `loadingMore`,
-`canLoadMore`, `exhausted`, or `error`.
+`canLoadMore`, `exhausted`, or `error`. The query also restarts by itself
+when the server reports an invalid cursor for a loaded page.
 
 ## Connection Status
 
@@ -373,7 +427,7 @@ remain available as a derived convenience:
 ```dart
 client.connectionStatus.listen((status) {
   print('connected: ${status.isConnected}');     // socket up AND fully synced
-  print('loading:   ${status.isLoading}');        // not yet re-synced
+  print('loading:   ${status.isLoading}');        // re-syncing after a reconnect
   print('inflight:  ${status.inflightMutations} mutations, '
       '${status.inflightActions} actions');
   print('retries:   ${status.connectionRetries}');
@@ -381,8 +435,10 @@ client.connectionStatus.listen((status) {
 ```
 
 `ConnectionStatus` also carries `isWebSocketConnected`, `hasEverConnected`,
-`connectionCount`, `timeOfOldestInflightRequest`, `hasInflightRequests`, and the
-derived coarse `state`.
+`connectionCount`, `timeOfOldestInflightRequest`, `hasInflightRequests`,
+`hasSyncedPastLastReconnect`, and the derived coarse `state`. For an offline
+indicator use `!isWebSocketConnected`: `isLoading` stays `false` while the
+socket is down.
 
 ## Auth Refreshing
 

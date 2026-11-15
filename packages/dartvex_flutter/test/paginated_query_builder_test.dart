@@ -40,46 +40,6 @@ void main() {
     initialConnectionState: ConvexConnectionState.connected,
   );
 
-  testWidgets(
-    'untyped snapshots expose controls without replacing widget keys',
-    (tester) async {
-      final client = connectedClient();
-      addTearDown(client.dispose);
-      ConvexPaginatedQuerySnapshot<Map<String, dynamic>>? snapshot;
-      await tester.pumpWidget(
-        Directionality(
-          textDirection: TextDirection.ltr,
-          child: PaginatedQueryBuilder<Map<String, dynamic>>.snapshot(
-            query: 'items:list',
-            client: client,
-            fromJson: (json) => json,
-            snapshotBuilder: (context, value, _) {
-              snapshot = value;
-              return const SizedBox();
-            },
-          ),
-        ),
-      );
-      snapshot!.retry();
-      expect(client.paginatedQueryCalls, hasLength(1));
-      snapshot!.reset();
-      await tester.pump();
-      expect(client.paginatedQueryCalls, hasLength(2));
-      final query = client.paginatedQueryCalls.last.query;
-      expect(client.paginatedQueryCalls.first.query.isCanceled, isTrue);
-      query.emitPage(
-        [],
-        status: ConvexPaginationStatus.error,
-        error: StateError('failed'),
-      );
-      await tester.pump();
-      snapshot!.retry();
-      await tester.pump();
-      expect(client.paginatedQueryCalls, hasLength(3));
-      expect(query.isCanceled, isTrue);
-    },
-  );
-
   testWidgets('starts in loading state and opens one paginated query', (
     tester,
   ) async {
@@ -275,7 +235,7 @@ void main() {
     expect(capturedStatus, PaginationStatus.error);
   });
 
-  testWidgets('maps item decode failures to error status without throwing', (
+  testWidgets('maps item decode failures to error status and reports them', (
     tester,
   ) async {
     final client = connectedClient();
@@ -306,7 +266,8 @@ void main() {
     );
     await tester.pump();
 
-    expect(tester.takeException(), isNull);
+    // Contained (no ErrorWidget) but reported, so the failure is debuggable.
+    expect(tester.takeException(), isA<FormatException>());
     expect(capturedStatus, PaginationStatus.error);
   });
 

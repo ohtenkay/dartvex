@@ -76,7 +76,7 @@ class LocalConvexRuntimeClient implements ConvexRuntimeClient {
   @override
   OptimisticUpdateHandle createOptimisticUpdate(OptimisticUpdate update) {
     throw UnsupportedError(
-      'The local runtime uses LocalMutationHandler patches instead of optimistic overlays.',
+      'This runtime does not implement optimistic overlays.',
     );
   }
 

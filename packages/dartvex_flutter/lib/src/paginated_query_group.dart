@@ -24,6 +24,10 @@ class ConvexPaginatedQueryGroupSnapshot<First, Second> {
   /// Whether either query is loading its first or an additional page.
   bool get isLoading => first.isLoading || second.isLoading;
 
+  /// Whether optimistic writes affect either query.
+  bool get hasPendingWrites =>
+      first.hasPendingWrites || second.hasPendingWrites;
+
   /// Whether both queries have exhausted their results.
   bool get isDone => first.isDone && second.isDone;
 

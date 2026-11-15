@@ -6,7 +6,6 @@ version: 1.0.0+1
 
 environment:
   sdk: ^3.12.0
-  flutter: '>=3.44.0'
 
 dependencies:
   flutter:
@@ -20,21 +19,21 @@ dependencies:
   dartvex_auth_better:
     path: ../../packages/dartvex_auth_better
   cupertino_icons: ^2.0.0
-  flutter_svg: ^2.3.2
-  path_provider: ^2.1.6
-  url_launcher: ^6.3.3
+  flutter_svg: ^2.3.0
+  path_provider: ^2.1.5
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.14.4
+  flutter_launcher_icons: ^0.14.0
 
 dependency_overrides:
   dartvex:
     path: ../../packages/dartvex
-  # path_provider_android 2.3.x migrated to a JNI plugin (jni_flutter) that
-  # previously failed to configure with AGP 8.11 / Gradle 8.14:
+  # path_provider_android 2.3.x migrated to a JNI plugin (jni_flutter) that fails
+  # to configure on this AGP 8.11 / Gradle 8.14 toolchain:
   #   ":jni_flutter:compileReleaseJavaWithJavac > Cannot query the value of this
   #    provider because it has no value available."
   # Pin to the last method-channel release so the Android build works. Only

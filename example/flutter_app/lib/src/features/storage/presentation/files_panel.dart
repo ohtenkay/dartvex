@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:dartvex/dartvex.dart' show ConvexClient, ConvexStorage;
 import 'package:dartvex_flutter/dartvex_flutter.dart'
     show ConvexQuery, ConvexQuerySnapshot;
+// Keep the declared Flutter SDK floor, which predates material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 

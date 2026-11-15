@@ -9,8 +9,8 @@ class GenerateConfig {
     required this.dryRun,
     required this.verbose,
     required this.watch,
-    this.flutterWidgets = false,
     this.discriminator = 'kind',
+    this.flutterWidgets = false,
     this.projectDirectory,
     this.specFile,
   });
@@ -36,28 +36,28 @@ class GenerateConfig {
   /// Whether the generator should watch for source changes and rerun automatically.
   final bool watch;
 
-  /// Whether to generate typed Flutter mutation widgets.
-  final bool flutterWidgets;
-
   /// Object-union field used to select generated sealed subclasses.
   final String discriminator;
+
+  /// Whether to emit typed Flutter query and mutation widgets.
+  final bool flutterWidgets;
 
   /// Returns a copy with filesystem paths normalized to absolute paths.
   GenerateConfig normalize() {
     return GenerateConfig(
-      projectDirectory: projectDirectory == null
-          ? null
-          : path.normalize(path.absolute(projectDirectory!)),
-      specFile: specFile == null
-          ? null
-          : path.normalize(path.absolute(specFile!)),
+      projectDirectory:
+          projectDirectory == null
+              ? null
+              : path.normalize(path.absolute(projectDirectory!)),
+      specFile:
+          specFile == null ? null : path.normalize(path.absolute(specFile!)),
       outputDirectory: path.normalize(path.absolute(outputDirectory)),
       clientImport: clientImport,
       dryRun: dryRun,
       verbose: verbose,
       watch: watch,
-      flutterWidgets: flutterWidgets,
       discriminator: discriminator,
+      flutterWidgets: flutterWidgets,
     );
   }
 

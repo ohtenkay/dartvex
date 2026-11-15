@@ -29,6 +29,7 @@ class TypeRenderContext {
   /// Creates a render context with optional naming overrides.
   TypeRenderContext({
     Naming? naming,
+    this.tableIdClassNames = const <String, String>{},
     this.schemaTypes,
     this.unionMetadata,
     this.discriminator = 'kind',
@@ -56,6 +57,9 @@ class TypeRenderContext {
 
   /// Shared schema base types referenced by this context.
   final Set<String> usedSharedTypeNames = <String>{};
+
+  /// Generated ID class names keyed by Convex table name.
+  final Map<String, String> tableIdClassNames;
 
   /// Table names referenced by generated ID wrappers.
   final Set<String> tableNames = <String>{};
@@ -112,6 +116,44 @@ class TypeRenderContext {
     _exactTypeOwners[normalized] = owner;
     return normalized;
   }
+
+  final Map<String, List<String>> _unionCaseNames = <String, List<String>>{};
+
+  /// Claims the case class names of the sealed union [unionTypeName].
+  ///
+  /// Each name in [desiredNames] is reserved exactly as given unless another
+  /// generated type already took it, in which case a numeric suffix is
+  /// appended. Unlike [reserveTypeName], the claim is not memoized by
+  /// suggestion, so a nested type later requesting the same name (for example
+  /// an object member's `value` enum, `<Union>1Value`) is deduplicated to
+  /// `<Union>1Value2` instead of colliding with the case class. Repeated
+  /// claims for the same union return the original names.
+  List<String> claimUnionCaseNames(
+    String unionTypeName,
+    List<String> desiredNames,
+  ) {
+    final existing = _unionCaseNames[unionTypeName];
+    if (existing != null) {
+      return existing;
+    }
+    final claimed = <String>[];
+    for (final desired in desiredNames) {
+      var candidate = desired;
+      var suffix = 2;
+      while (_reservedTypeNames.contains(candidate)) {
+        candidate = '$desired$suffix';
+        suffix += 1;
+      }
+      _reservedTypeNames.add(candidate);
+      claimed.add(candidate);
+    }
+    _unionCaseNames[unionTypeName] = claimed;
+    return claimed;
+  }
+
+  /// Returns the generated ID class name for the Convex table [tableName].
+  String tableIdClassName(String tableName) =>
+      tableIdClassNames[tableName] ?? '${naming.typeName(tableName)}Id';
 
   /// Registers a generated type/helper definition if it has not been added yet.
   void addDeclaration(String name, String code) {
@@ -180,6 +222,48 @@ class TypeMapper {
 
   final Naming _naming;
 
+  /// Resolves the Dart names of the fields [rawNames] of one object (or one
+  /// function's arguments) owned by [ownerName], keyed by raw name.
+  ///
+  /// System fields that collide with a user field are disambiguated by
+  /// [Naming.resolveFieldNames] (`_id` next to `id` becomes `systemId`); any
+  /// collision that remains throws a [TypeMapperException] instead of
+  /// emitting duplicate record fields or parameters.
+  Map<String, String> resolveObjectFieldNames(
+    Iterable<String> rawNames, {
+    required String ownerName,
+  }) {
+    final resolved = _naming.resolveFieldNames(rawNames);
+    final safeNameToRaw = <String, List<String>>{};
+    for (final entry in resolved.entries) {
+      (safeNameToRaw[entry.value] ??= <String>[]).add(entry.key);
+    }
+    for (final entry in safeNameToRaw.entries) {
+      if (entry.value.length > 1) {
+        throw TypeMapperException(
+          'Field name collision in "$ownerName": fields '
+          '${entry.value.map((name) => '"$name"').join(', ')} '
+          'all map to Dart name "${entry.key}".',
+        );
+      }
+    }
+    return resolved;
+  }
+
+  /// Returns the type-name suffix used for nested types of the field
+  /// [rawName], whose resolved Dart name is [resolvedName].
+  ///
+  /// Normally this is derived from the raw name (keeping existing generated
+  /// type names stable); a disambiguated system field (`_id` resolved to
+  /// `systemId`) uses its resolved name so it cannot share nested type names
+  /// with the colliding user field.
+  String fieldTypeSuffix(String rawName, String resolvedName) {
+    if (resolvedName == _naming.fieldName(rawName)) {
+      return _naming.typeName(rawName);
+    }
+    return _naming.typeName(resolvedName);
+  }
+
   /// Maps a Convex [type] into Dart using [suggestedName] within [context].
   MappedType mapType(
     ConvexType type, {
@@ -212,8 +296,9 @@ class TypeMapper {
           return MappedType(
             dartType: DartNullableType(mapped.dartType),
             encode: _nullableEncode(mapped.encode),
-            decode: (expression) =>
-                '$expression == null ? null : ${mapped.decode(expression)}',
+            decode:
+                (expression) =>
+                    '$expression == null ? null : ${mapped.decode(expression)}',
           );
         }
         return mapped;
@@ -230,24 +315,28 @@ class TypeMapper {
       return MappedType(
         dartType: const DartPrimitiveType('bool'),
         encode: (expression) => expression,
-        decode: (expression) =>
-            "expectBool($expression, label: '$suggestedName')",
+        decode:
+            (expression) => "expectBool($expression, label: '$suggestedName')",
       );
     }
-    if (type is ConvexStringType) {
+    if (type is ConvexStringType || type is ConvexFunctionHandleType) {
+      // A `v.function()` value is a function handle string; its declared
+      // fnType/args/returns are informational only.
       return MappedType(
         dartType: const DartPrimitiveType('String'),
         encode: (expression) => expression,
-        decode: (expression) =>
-            "expectString($expression, label: '$suggestedName')",
+        decode:
+            (expression) =>
+                "expectString($expression, label: '$suggestedName')",
       );
     }
     if (type is ConvexNumberType) {
       return MappedType(
         dartType: const DartPrimitiveType('double'),
         encode: (expression) => expression,
-        decode: (expression) =>
-            "expectDouble($expression, label: '$suggestedName')",
+        decode:
+            (expression) =>
+                "expectDouble($expression, label: '$suggestedName')",
       );
     }
     if (type is ConvexNullType) {
@@ -261,8 +350,23 @@ class TypeMapper {
       return MappedType(
         dartType: const DartPrimitiveType('BigInt'),
         encode: (expression) => expression,
-        decode: (expression) =>
-            "expectBigInt($expression, label: '$suggestedName')",
+        decode:
+            (expression) =>
+                "expectBigInt($expression, label: '$suggestedName')",
+      );
+    }
+    if (type is ConvexCommitTsType) {
+      // `v.commitTs()` is `bigint | CommitTsPlaceholder` in Convex: an int64
+      // commit timestamp once committed, but `{"$commitTs": null}` (decoded
+      // as ConvexCommitTsPlaceholder) when the writing mutation reads the
+      // field back and returns it. Dart has no union type, so the field is an
+      // Object holding one of the two.
+      return MappedType(
+        dartType: const DartPrimitiveType('Object'),
+        encode: (expression) => expression,
+        decode:
+            (expression) =>
+                "expectCommitTs($expression, label: '$suggestedName')",
       );
     }
     if (type is ConvexBytesType) {
@@ -270,8 +374,8 @@ class TypeMapper {
       return MappedType(
         dartType: const DartPrimitiveType('Uint8List'),
         encode: (expression) => expression,
-        decode: (expression) =>
-            "expectBytes($expression, label: '$suggestedName')",
+        decode:
+            (expression) => "expectBytes($expression, label: '$suggestedName')",
       );
     }
     if (type is ConvexLiteralType) {
@@ -291,20 +395,23 @@ class TypeMapper {
       return MappedType(
         dartType: literalType,
         encode: (expression) => expression,
-        decode: (expression) => literalType.annotation == 'Null'
-            ? 'null'
-            : 'expectLiteral<${literalType.annotation}>($expression, '
-                  '$expectedCode, label: \'$suggestedName\')',
+        decode:
+            (expression) =>
+                literalType.annotation == 'Null'
+                    ? 'null'
+                    : 'expectLiteral<${literalType.annotation}>($expression, '
+                        '$expectedCode, label: \'$suggestedName\')',
       );
     }
     if (type is ConvexIdType) {
       context.tableNames.add(type.tableName);
-      final typeName = '${_naming.typeName(type.tableName)}Id';
+      final typeName = context.tableIdClassName(type.tableName);
       return MappedType(
         dartType: DartNamedType(typeName),
         encode: (expression) => '$expression.value',
-        decode: (expression) =>
-            "$typeName(expectString($expression, label: '$suggestedName'))",
+        decode:
+            (expression) =>
+                "$typeName(expectString($expression, label: '$suggestedName'))",
       );
     }
     if (type is ConvexArrayType) {
@@ -316,18 +423,21 @@ class TypeMapper {
       );
       return MappedType(
         dartType: DartListType(item.dartType),
-        encode: (expression) =>
-            '$expression.map((item) => ${item.encode('item')}).toList()',
-        decode: (expression) =>
-            'expectList($expression, label: \'$suggestedName\')'
-            '.map((item) => ${item.decode('item')}).toList()',
+        encode:
+            (expression) =>
+                '$expression.map((item) => ${item.encode('item')}).toList()',
+        decode:
+            (expression) =>
+                'expectList($expression, label: \'$suggestedName\')'
+                '.map((item) => ${item.decode('item')}).toList()',
       );
     }
     if (type is ConvexRecordType) {
-      if (type.keys is! ConvexStringType) {
+      if (!_isStringKey(type.keys)) {
         context.warnings.add(
-          'Record keys for "$suggestedName" are not strings. Falling back to '
-          'Map<String, dynamic>.',
+          'Record keys for "$suggestedName" use an unsupported key validator '
+          '"${_describeConvexType(type.keys)}" (expected a string, an id, or '
+          'a union of those). Falling back to Map<String, dynamic>.',
         );
         return MappedType(
           dartType: const DartMapType(
@@ -335,8 +445,8 @@ class TypeMapper {
             valueType: DartPrimitiveType('dynamic'),
           ),
           encode: (expression) => expression,
-          decode: (expression) =>
-              "expectMap($expression, label: '$suggestedName')",
+          decode:
+              (expression) => "expectMap($expression, label: '$suggestedName')",
         );
       }
       final value = mapType(
@@ -350,11 +460,13 @@ class TypeMapper {
           keyType: const DartPrimitiveType('String'),
           valueType: value.dartType,
         ),
-        encode: (expression) =>
-            "$expression.map((key, value) => MapEntry(key, ${value.encode('value')}))",
-        decode: (expression) =>
-            "expectMap($expression, label: '$suggestedName')"
-            ".map((key, value) => MapEntry(key, ${value.decode('value')}))",
+        encode:
+            (expression) =>
+                "$expression.map((key, value) => MapEntry(key, ${value.encode('value')}))",
+        decode:
+            (expression) =>
+                "expectMap($expression, label: '$suggestedName')"
+                ".map((key, value) => MapEntry(key, ${value.decode('value')}))",
       );
     }
     if (type is ConvexObjectType) {
@@ -369,27 +481,16 @@ class TypeMapper {
             valueType: DartPrimitiveType('dynamic'),
           ),
           encode: (expression) => expression,
-          decode: (expression) =>
-              "expectMap($expression, label: '$suggestedName')",
+          decode:
+              (expression) => "expectMap($expression, label: '$suggestedName')",
         );
       }
       final typeName = context.reserveTypeName(suggestedName);
 
-      // Detect field name collisions before generating code.
-      final safeNameToRaw = <String, List<String>>{};
-      for (final rawName in type.value.keys) {
-        final safeName = _naming.fieldName(rawName);
-        (safeNameToRaw[safeName] ??= <String>[]).add(rawName);
-      }
-      for (final entry in safeNameToRaw.entries) {
-        if (entry.value.length > 1) {
-          throw TypeMapperException(
-            'Field name collision in "$typeName": fields '
-            '${entry.value.map((name) => '"$name"').join(', ')} '
-            'all map to Dart name "${entry.key}".',
-          );
-        }
-      }
+      final fieldNames = resolveObjectFieldNames(
+        type.value.keys,
+        ownerName: typeName,
+      );
 
       final fields = <DartRecordField>[];
       final fieldDecodeLines = <String>[];
@@ -402,17 +503,18 @@ class TypeMapper {
       for (final entry in type.value.entries) {
         final rawName = entry.key;
         final fieldKey = dartSingleQuotedString(rawName);
-        final safeName = _naming.fieldName(rawName);
+        final safeName = fieldNames[rawName]!;
         final field = entry.value;
         final mappedField = mapType(
           field.fieldType,
-          suggestedName: '$typeName${_naming.typeName(rawName)}',
+          suggestedName: '$typeName${fieldTypeSuffix(rawName, safeName)}',
           context: context,
           fieldName: rawName,
         );
-        final fieldType = field.optional
-            ? DartNamedType('Optional<${mappedField.annotation}>')
-            : mappedField.dartType;
+        final fieldType =
+            field.optional
+                ? DartNamedType('Optional<${mappedField.annotation}>')
+                : mappedField.dartType;
         fields.add(DartRecordField(name: safeName, type: fieldType));
         if (field.optional) {
           encodeBuffer.write(
@@ -480,6 +582,22 @@ class TypeMapper {
       );
     }
     throw TypeMapperException('Unsupported Convex type "${type.type}"');
+  }
+
+  /// Whether [keys] is a record key validator whose values are always Dart
+  /// strings on the wire: `v.string()`, `v.id(...)`, a string literal, or a
+  /// union of those (the shapes Convex accepts as `RecordKeyValidatorJSON`).
+  bool _isStringKey(ConvexType keys) {
+    if (keys is ConvexStringType || keys is ConvexIdType) {
+      return true;
+    }
+    if (keys is ConvexLiteralType) {
+      return keys.value is String;
+    }
+    if (keys is ConvexUnionType) {
+      return keys.value.isNotEmpty && keys.value.every(_isStringKey);
+    }
+    return false;
   }
 
   MappedType _mapUnion(
@@ -558,8 +676,9 @@ class TypeMapper {
       return MappedType(
         dartType: DartNullableType(inner.dartType),
         encode: _nullableEncode(inner.encode),
-        decode: (expression) =>
-            '$expression == null ? null : ${inner.decode(expression)}',
+        decode:
+            (expression) =>
+                '$expression == null ? null : ${inner.decode(expression)}',
       );
     }
 
@@ -643,16 +762,20 @@ class TypeMapper {
         ..writeln('  }')
         ..write('}');
       context.addDeclaration(typeName, enumBuffer.toString());
-      final dartType = nullable
-          ? DartNullableType(DartNamedType(typeName))
-          : DartNamedType(typeName);
+      final dartType =
+          nullable
+              ? DartNullableType(DartNamedType(typeName))
+              : DartNamedType(typeName);
       return MappedType(
         dartType: dartType,
-        encode: (expression) =>
-            nullable ? '$expression?.value' : '$expression.value',
-        decode: (expression) => nullable
-            ? '$expression == null ? null : $typeName.fromJson($expression)'
-            : '$typeName.fromJson($expression)',
+        encode:
+            (expression) =>
+                nullable ? '$expression?.value' : '$expression.value',
+        decode:
+            (expression) =>
+                nullable
+                    ? '$expression == null ? null : $typeName.fromJson($expression)'
+                    : '$typeName.fromJson($expression)',
       );
     }
 
@@ -687,6 +810,14 @@ class TypeMapper {
     }
 
     final typeName = context.reserveTypeName(suggestedName);
+    // Claim the case class names before mapping the members: a member's
+    // nested types are named from the same `<Union><n>` prefix (an object
+    // field `value` or a record value would request `<Union><n>Value`), so
+    // they must dedupe against the case classes rather than redeclare them.
+    final caseNames = context.claimUnionCaseNames(typeName, <String>[
+      for (var index = 0; index < nonNull.length; index += 1)
+        '$typeName${index + 1}Value',
+    ]);
     final cases = <_UnionCase>[];
     final buffer = StringBuffer('sealed class $typeName {\n');
     buffer.writeln('  const $typeName();');
@@ -700,7 +831,7 @@ class TypeMapper {
         suggestedName: '$typeName${index + 1}',
         context: context,
       );
-      final caseName = '$typeName${index + 1}Value';
+      final caseName = caseNames[index];
       cases.add(_UnionCase(className: caseName, mappedType: mappedMember));
       buffer
         ..writeln('class $caseName extends $typeName {')
@@ -714,17 +845,21 @@ class TypeMapper {
     context.addCodec('_encode$typeName', _renderUnionEncode(typeName, cases));
     context.addCodec('_decode$typeName', _renderUnionDecode(typeName, cases));
 
-    final dartType = nullable
-        ? DartNullableType(DartNamedType(typeName))
-        : DartNamedType(typeName);
+    final dartType =
+        nullable
+            ? DartNullableType(DartNamedType(typeName))
+            : DartNamedType(typeName);
     return MappedType(
       dartType: dartType,
-      encode: nullable
-          ? _nullableEncode((expression) => '_encode$typeName($expression)')
-          : (expression) => '_encode$typeName($expression)',
-      decode: (expression) => nullable
-          ? '$expression == null ? null : _decode$typeName($expression)'
-          : '_decode$typeName($expression)',
+      encode:
+          nullable
+              ? _nullableEncode((expression) => '_encode$typeName($expression)')
+              : (expression) => '_encode$typeName($expression)',
+      decode:
+          (expression) =>
+              nullable
+                  ? '$expression == null ? null : _decode$typeName($expression)'
+                  : '_decode$typeName($expression)',
     );
   }
 
@@ -746,6 +881,10 @@ class TypeMapper {
     for (final property in metadata) {
       declaration.writeln('  ${property.annotation} get ${property.name};');
     }
+    final fieldNames = _naming.resolveFieldNames({
+      for (final member in union.members)
+        ...member.object.value.keys.where((key) => key != union.discriminator),
+    });
     final commonFields = <String, _DiscriminatedField>{};
     for (final entry in union.members.first.object.value.entries) {
       if (entry.key == union.discriminator) continue;
@@ -761,20 +900,20 @@ class TypeMapper {
       }
       final mapped = mapType(
         field.fieldType,
-        suggestedName: '$typeName${_naming.typeName(entry.key)}',
+        suggestedName:
+            '$typeName${fieldTypeSuffix(entry.key, fieldNames[entry.key]!)}',
         context: context,
         fieldName: entry.key,
       );
-      final name = _naming.fieldName(entry.key);
+      final name = fieldNames[entry.key]!;
       commonFields[entry.key] = _DiscriminatedField(
         rawName: entry.key,
         name: name,
         mappedType: mapped,
         optional: field.optional,
       );
-      final annotation = field.optional
-          ? 'Optional<${mapped.annotation}>'
-          : mapped.annotation;
+      final annotation =
+          field.optional ? 'Optional<${mapped.annotation}>' : mapped.annotation;
       declaration.writeln('  $annotation get $name;');
     }
     if (commonFields.isNotEmpty) {
@@ -803,7 +942,7 @@ class TypeMapper {
         if (rawName == union.discriminator) {
           continue;
         }
-        final safeName = _naming.fieldName(rawName);
+        final safeName = fieldNames[rawName]!;
         if (safeName == 'copyWith') {
           throw TypeMapperException(
             'Field "$rawName" in "$className" maps to Dart name "copyWith", '
@@ -829,10 +968,11 @@ class TypeMapper {
           commonFields[entry.key] ??
               _DiscriminatedField(
                 rawName: entry.key,
-                name: _naming.fieldName(entry.key),
+                name: fieldNames[entry.key]!,
                 mappedType: mapType(
                   entry.value.fieldType,
-                  suggestedName: '$className${_naming.typeName(entry.key)}',
+                  suggestedName:
+                      '$className${fieldTypeSuffix(entry.key, fieldNames[entry.key]!)}',
                   context: context,
                   fieldName: entry.key,
                 ),
@@ -854,9 +994,10 @@ class TypeMapper {
           )
           ..writeln('  });');
         for (final field in fields) {
-          final annotation = field.optional
-              ? 'Optional<${field.mappedType.annotation}>'
-              : field.mappedType.annotation;
+          final annotation =
+              field.optional
+                  ? 'Optional<${field.mappedType.annotation}>'
+                  : field.mappedType.annotation;
           declaration
             ..writeln()
             ..writeln('  final $annotation ${field.name};');
@@ -895,10 +1036,11 @@ class TypeMapper {
         }
       }
       encoded.write('}');
-      final pattern = fields.isEmpty
-          ? '$className()'
-          : '$className('
-                '${fields.map((field) => '${field.name}: final ${field.name}').join(', ')})';
+      final pattern =
+          fields.isEmpty
+              ? '$className()'
+              : '$className('
+                  '${fields.map((field) => '${field.name}: final ${field.name}').join(', ')})';
       encodeCases.add('    case $pattern: return $encoded;');
 
       final decoded = StringBuffer();
@@ -923,7 +1065,7 @@ class TypeMapper {
           decoded.writeln(
             field.optional
                 ? '          ${field.name}: map.containsKey($key) '
-                      '? Optional.of($expression) : const Optional.absent(),'
+                    '? Optional.of($expression) : const Optional.absent(),'
                 : '          ${field.name}: $expression,',
           );
         }
@@ -968,17 +1110,21 @@ class TypeMapper {
           '}',
     );
 
-    final dartType = nullable
-        ? DartNullableType(DartNamedType(typeName))
-        : DartNamedType(typeName);
+    final dartType =
+        nullable
+            ? DartNullableType(DartNamedType(typeName))
+            : DartNamedType(typeName);
     return MappedType(
       dartType: dartType,
-      encode: nullable
-          ? _nullableEncode((expression) => '_encode$typeName($expression)')
-          : (expression) => '_encode$typeName($expression)',
-      decode: (expression) => nullable
-          ? '$expression == null ? null : _decode$typeName($expression)'
-          : '_decode$typeName($expression)',
+      encode:
+          nullable
+              ? _nullableEncode((expression) => '_encode$typeName($expression)')
+              : (expression) => '_encode$typeName($expression)',
+      decode:
+          (expression) =>
+              nullable
+                  ? '$expression == null ? null : _decode$typeName($expression)'
+                  : '_decode$typeName($expression)',
     );
   }
 
@@ -1041,11 +1187,12 @@ class TypeMapper {
   }
 
   List<ConvexType> _removeRedundantLiteralMembers(List<ConvexType> members) {
-    final coveredScalarTags = members
-        .where((type) => type is! ConvexLiteralType)
-        .map(_scalarLiteralCoverageTag)
-        .whereType<String>()
-        .toSet();
+    final coveredScalarTags =
+        members
+            .where((type) => type is! ConvexLiteralType)
+            .map(_scalarLiteralCoverageTag)
+            .whereType<String>()
+            .toSet();
     if (coveredScalarTags.isEmpty) {
       return members;
     }
@@ -1094,6 +1241,14 @@ class TypeMapper {
         if (left is ConvexObjectType &&
             right is ConvexObjectType &&
             _hasDistinctRequiredLiteralDiscriminator(left, right)) {
+          continue;
+        }
+        // Distinct literals of the same runtime shape (`'auto'` and `'none'`)
+        // never overlap: each case decodes through expectLiteral, which
+        // compares the value itself.
+        if (left is ConvexLiteralType &&
+            right is ConvexLiteralType &&
+            !_literalValuesEqual(left.value, right.value)) {
           continue;
         }
         throw TypeMapperException(
@@ -1154,10 +1309,12 @@ class TypeMapper {
     if (type is ConvexNumberType) {
       return 'number';
     }
-    if (type is ConvexBigIntType) {
+    if (type is ConvexBigIntType || type is ConvexCommitTsType) {
       return 'bigint';
     }
-    if (type is ConvexStringType || type is ConvexIdType) {
+    if (type is ConvexStringType ||
+        type is ConvexIdType ||
+        type is ConvexFunctionHandleType) {
       return 'string';
     }
     if (type is ConvexBytesType) {

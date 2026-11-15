@@ -87,6 +87,50 @@ class Naming {
     'yield',
   };
 
+  /// Members of `Object` that Dart forbids as record field names and that a
+  /// generated method or field must not override with a different signature.
+  static const Set<String> _objectMembers = <String>{
+    'hashCode',
+    'noSuchMethod',
+    'runtimeType',
+    'toString',
+  };
+
+  /// Resolves the generated Dart field names for the raw keys of one Convex
+  /// object (or one function's arguments), keyed by raw name.
+  ///
+  /// Convex system fields start with `_` and sanitize to the same name as a
+  /// plain user field (`_id` and `id` both become `id`). When that happens,
+  /// the user field keeps the plain name and each colliding `_`-prefixed
+  /// field gets a `system` prefix (`_id` becomes `systemId`, `_creationTime`
+  /// becomes `systemCreationTime`). Non-colliding system fields keep their
+  /// usual names, so existing bindings are unchanged.
+  ///
+  /// Collisions that this rule cannot resolve are left in place; callers must
+  /// still reject duplicate values.
+  Map<String, String> resolveFieldNames(Iterable<String> rawNames) {
+    final raws = rawNames.toList(growable: false);
+    final byName = <String, List<String>>{};
+    for (final raw in raws) {
+      (byName[fieldName(raw)] ??= <String>[]).add(raw);
+    }
+    final result = <String, String>{};
+    for (final raw in raws) {
+      final name = fieldName(raw);
+      final group = byName[name]!;
+      final isSystem = raw.startsWith('_');
+      final hasPlainSibling = group.any((other) => !other.startsWith('_'));
+      if (group.length > 1 && isSystem && hasPlainSibling) {
+        result[raw] = fieldName(
+          'system_${raw.replaceFirst(RegExp('^_+'), '')}',
+        );
+      } else {
+        result[raw] = name;
+      }
+    }
+    return result;
+  }
+
   /// Returns the generated API class name for a module path.
   String moduleClassName(List<String> segments) {
     if (segments.isEmpty) {
@@ -104,9 +148,10 @@ class Naming {
     if (parts.isEmpty) {
       return 'GeneratedType';
     }
-    final base = parts
-        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
-        .join();
+    final base =
+        parts
+            .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+            .join();
     return _sanitizeTypeName(base);
   }
 
@@ -117,10 +162,11 @@ class Naming {
       return 'call';
     }
     final first = _lowerFirst(parts.first);
-    final rest = parts
-        .skip(1)
-        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
-        .join();
+    final rest =
+        parts
+            .skip(1)
+            .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+            .join();
     return _sanitizeFieldName('$first$rest');
   }
 
@@ -131,10 +177,11 @@ class Naming {
       return 'value';
     }
     final first = _lowerFirst(parts.first);
-    final rest = parts
-        .skip(1)
-        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
-        .join();
+    final rest =
+        parts
+            .skip(1)
+            .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+            .join();
     return _sanitizeFieldName('$first$rest');
   }
 
@@ -214,7 +261,7 @@ class Naming {
     if (RegExp(r'^\d').hasMatch(result)) {
       result = 'v$result';
     }
-    if (_keywords.contains(result)) {
+    if (_keywords.contains(result) || _objectMembers.contains(result)) {
       result = '${result}Value';
     }
     return result;

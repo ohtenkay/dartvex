@@ -2,7 +2,7 @@ name: dartvex
 description: >-
   Pure Dart client for Convex with WebSocket sync, type-safe values,
   and reactive subscriptions. Works on iOS, Android, web, and desktop.
-version: 0.2.0
+version: 0.3.0
 homepage: https://github.com/AndreFrelicot/dartvex
 repository: https://github.com/AndreFrelicot/dartvex/tree/main/packages/dartvex
 issue_tracker: https://github.com/AndreFrelicot/dartvex/issues
@@ -26,11 +26,11 @@ environment:
 
 dependencies:
   collection: ^1.19.1
-  http: ^1.6.0
-  meta: ^1.19.0
-  uuid: ^4.6.0
-  web: ^1.1.2
+  http: ^1.5.0
+  meta: ^1.16.0
+  uuid: ^4.5.1
+  web: ^1.1.1
 
 dev_dependencies:
-  lints: ^6.1.0
-  test: ^1.33.0
+  lints: ^5.1.1
+  test: ^1.25.15
