@@ -135,6 +135,16 @@ class DartGenerator {
       warnings.addAll(typeContext.warnings.toSet());
     }
 
+    final widgetPaths =
+        files.keys.where((file) => file.startsWith('widgets/')).toList();
+    if (widgetPaths.isNotEmpty) {
+      files['widgets.dart'] = _formatOrThrow(
+        '$generatedFileHeader\n$generatedFileIgnores\n\n'
+            '${widgetPaths.map((file) => "export '$file';").join('\n')}\n',
+        'widgets.dart',
+      );
+    }
+
     files['schema.dart'] = _formatOrThrow(
       _buildSchemaFile(tableIdClassNames),
       'schema.dart',
@@ -446,17 +456,6 @@ class DartGenerator {
         ..writeln("export 'schema.dart';");
       if (_externalTypeNames.isNotEmpty) {
         buffer.writeln("export 'types.dart';");
-      }
-      if (generateFlutterWidgets) {
-        for (final widgetNode in _flattenNodes(node)) {
-          if (widgetNode.functions.any(
-            (function) =>
-                function.functionType == 'Mutation' ||
-                function.functionType == 'Query',
-          )) {
-            buffer.writeln("export '${_widgetFilePath(widgetNode)}';");
-          }
-        }
       }
       buffer.writeln();
     }
