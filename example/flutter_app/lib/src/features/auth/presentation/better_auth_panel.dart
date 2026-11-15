@@ -1,6 +1,8 @@
 import 'package:dartvex_auth_better/dartvex_auth_better.dart';
 import 'package:dartvex/dartvex.dart';
 import 'package:dartvex_flutter/dartvex_flutter.dart';
+// Keep the declared Flutter SDK floor, which predates material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 import '../../shared/presentation/conversation_widgets.dart';

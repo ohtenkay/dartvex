@@ -1,3 +1,5 @@
+// Keep the declared Flutter SDK floor, which predates material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 /// The "concierge" dark palette shared with the Dartvex end-to-end demo app:
