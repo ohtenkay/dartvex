@@ -25,12 +25,22 @@ export 'src/config.dart'
         convexSyncApiVersion,
         dartvexVersion;
 export 'src/exceptions.dart'
-    show ConvexException, ConvexFileUploadException, ConvexStorageException;
+    show
+        ConvexException,
+        ConvexFileUploadException,
+        ConvexFileUploadCancelledException,
+        ConvexStorageException;
 export 'src/logging.dart' show DartvexLogEvent, DartvexLogger, DartvexLogLevel;
 export 'src/mutation.dart' show ConvexMutationReference, NoArgs;
 export 'src/query.dart'
     show ConvexQueryReference, ConvexPaginatedQueryReference;
-export 'src/storage.dart' show ConvexStorage;
+export 'src/storage.dart' show ConvexStorage, ConvexUploadRequest;
+export 'src/upload_operation.dart'
+    show
+        ConvexUpload,
+        ConvexUploadSnapshot,
+        ConvexUploadStatus,
+        ConvexUploadRetry;
 export 'src/sync/optimistic_updates.dart'
     show
         OptimisticLocalStore,
